@@ -1,5 +1,5 @@
-use std::env;
-use std::path::Path;
+use std::{env, println};
+use std::path::{Path, PathBuf};
 use std::fs;
 
 fn main() {
@@ -28,11 +28,16 @@ fn main() {
         return;
     }
 
-    println!("Contents");
-    walk_directory(path);
+    let mut files: Vec<PathBuf> = Vec::new();
+
+    walk_directory(path, &mut files);
+    println!("{} files were discovered\nContents", files.len());
+    for file in &files {
+        println!("{}", file.display());
+    }
 }
 
-fn walk_directory(path: &Path) {
+fn walk_directory(path: &Path, output: &mut Vec<PathBuf>) {
     let content = fs::read_dir(path);
 
     match content {
@@ -46,9 +51,9 @@ fn walk_directory(path: &Path) {
                         match sub_dir {
                             Ok(file_type) => {
                                 if file_type.is_file() {
-                                    println!("{}", entry_path.display());
+                                    output.push(entry_path);
                                 } else if file_type.is_dir() {
-                                    walk_directory(&entry_path);
+                                    walk_directory(&entry_path, output);
                                 } else {
                                     println!("{} is not supported", entry_path.display());
                                     continue;
