@@ -1,7 +1,14 @@
-use std::{env, eprintln};
+use std::env;
 use std::path::{Path, PathBuf};
 use std::fs;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
+
+#[derive(Debug)]
+enum FileState {
+    New,
+    Modified,
+    Unchanged,
+}
 
 struct FileEntry {
     path: PathBuf,
@@ -16,6 +23,14 @@ impl FileEntry {
             size,
             modified,
         }
+    }
+
+    fn compare(&self, file: &FileEntry) -> FileState {
+        if self.path == file.path && self.size == file.size && self.modified == file.modified {
+            return FileState::Unchanged
+        }
+
+        FileState::Modified
     }
 }
 
@@ -52,6 +67,56 @@ fn main() {
     for file in &files {
         println!("{} - {} bytes last modified: {:?}", file.path.display(), file.size, file.modified);
     }
+
+    let test_time = SystemTime::now();
+    let temp_file_1: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file.txt"), 1200, test_time);
+    let temp_file_2: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file.txt"), 1200, test_time);
+    let temp_file_3: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file.txt"), 1000, test_time);
+    let temp_file_4: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file.txt"), 1200, test_time + Duration::from_secs(60));
+
+    let test_1: FileState = temp_file_1.compare(&temp_file_2);
+    let test_2: FileState = temp_file_1.compare(&temp_file_3);
+    let test_3: FileState = temp_file_1.compare(&temp_file_4);
+
+    println!("\n\nTest 1 -- Expected Result: Unchanged");
+    match test_1 {
+        FileState::Modified => {
+            println!("Modified");
+        },
+        FileState::Unchanged => {
+            println!("Unchanged");
+        },
+        _ => {
+            println!("Not Modified or Unchanged");
+        }
+    }
+
+    println!("Test 2 -- Expected Result: Modified");
+    match test_2 {
+        FileState::Modified => {
+            println!("Modified");
+        },
+        FileState::Unchanged => {
+            println!("Unchanged");
+        },
+        _ => {
+            println!("Not Modified or Unchanged");
+        }
+    }
+
+    println!("Test 3 -- Expected Result: Modified");
+    match test_3 {
+        FileState::Modified => {
+            println!("Modified");
+        },
+        FileState::Unchanged => {
+            println!("Unchanged");
+        },
+        _ => {
+            println!("Not Modified or Unchanged");
+        }
+    }
+
 }
 
 fn walk_directory(path: &Path, output: &mut Vec<FileEntry>) {
