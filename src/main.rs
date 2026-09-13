@@ -1,5 +1,6 @@
-use std::{env, eprint, println};
+use std::{env, eprint, eprintln, println};
 use std::path::Path;
+use std::fs;
 
 fn main() {
     println!("RustSync");
@@ -16,14 +17,36 @@ fn main() {
     let path = Path::new(&args[1]);
 
     if !path.exists() {
-        eprint!("Error: source path does not exist");
+        eprintln!("Error: source path does not exist");
         return;
     }
 
     if path.is_dir() {
-        println!("Source directory is valid");
+        println!("Source directory is valid\n");
     } else {
-        eprint!("Error: source path is not a directory");
+        eprintln!("Error: source path is not a directory");
         return;
+    }
+
+    let contents = fs::read_dir(path);
+
+    match contents {
+        Ok(value) => {
+            println!("Contents:");
+            for entry in value {
+                match entry {
+                    Ok(dir_entry) => {
+                        println!("{}", dir_entry.file_name().to_string_lossy());
+                    },
+                    Err(err) => {
+                        eprint!("Error: {err}");
+                    }
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("Error: {err}");
+            return;
+        }
     }
 }
