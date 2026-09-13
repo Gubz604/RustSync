@@ -1,6 +1,20 @@
-use std::{env, println};
+use std::env;
 use std::path::{Path, PathBuf};
 use std::fs;
+
+struct FileEntry {
+    path: PathBuf,
+    size: u64,
+}
+
+impl FileEntry {
+    fn new(path: PathBuf, size: u64) -> Self {
+        Self {
+            path,
+            size,
+        }
+    }
+}
 
 fn main() {
     println!("RustSync");
@@ -28,16 +42,16 @@ fn main() {
         return;
     }
 
-    let mut files: Vec<PathBuf> = Vec::new();
+    let mut files: Vec<FileEntry> = Vec::new();
 
     walk_directory(path, &mut files);
     println!("{} files were discovered\nContents", files.len());
     for file in &files {
-        println!("{}", file.display());
+        println!("{} - {} bytes", file.path.display(), file.size);
     }
 }
 
-fn walk_directory(path: &Path, output: &mut Vec<PathBuf>) {
+fn walk_directory(path: &Path, output: &mut Vec<FileEntry>) {
     let content = fs::read_dir(path);
 
     match content {
@@ -51,7 +65,15 @@ fn walk_directory(path: &Path, output: &mut Vec<PathBuf>) {
                         match sub_dir {
                             Ok(file_type) => {
                                 if file_type.is_file() {
-                                    output.push(entry_path);
+                                    let     metadata = fs::metadata(&entry_path);
+                                    match   metadata {
+                                        Ok(meta) => {
+                                            output.push(FileEntry::new(entry_path, meta.len()));
+                                        },
+                                        Err(err) => {
+                                            eprintln!("Error: {err}");
+                                        }
+                                    }
                                 } else if file_type.is_dir() {
                                     walk_directory(&entry_path, output);
                                 } else {
