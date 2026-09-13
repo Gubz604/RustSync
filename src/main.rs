@@ -1,7 +1,8 @@
-use std::{env, println, vec};
+use std::{env, eprintln, println, writeln};
 use std::path::{Path, PathBuf};
-use std::fs;
-use std::time::{Duration, SystemTime};
+use std::fs::{self, File};
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::io::Write;
 
 #[derive(Debug)]
 enum FileState {
@@ -25,6 +26,7 @@ impl FileEntry {
         }
     }
 
+    
     fn compare(&self, file: &FileEntry) -> FileState {
         if self.path == file.path && self.size == file.size && self.modified == file.modified {
             return FileState::Unchanged
@@ -63,22 +65,10 @@ fn main() {
     let mut files: Vec<FileEntry> = Vec::new();
 
     walk_directory(path, &mut files);
-    println!("{} files were discovered\nContents", files.len());
+    println!("{} files were discovered", files.len());
 
-    let test_time = SystemTime::now();
-    let temp_file_1: FileEntry = FileEntry::new(PathBuf::from("C:\\myFiles\\ProgrammingProjects\\rustsync\\.git\\COMMIT_EDITMSG"), 1200, test_time);
-    let temp_file_2: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file2.txt"), 1200, test_time);
-    let temp_file_3: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file3.txt"), 1000, test_time);
-    let temp_file_4: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file4.txt"), 1200, test_time + Duration::from_secs(60));
-
-    let temp_files: Vec<FileEntry> = vec![
-        temp_file_1,
-        temp_file_2,
-        temp_file_3,
-        temp_file_4,
-    ];
-
-    compare_scans(&files, &temp_files);
+    let state_path = Path::new("rustsync_state.txt");
+    save_scan(&files, state_path);
 }
 
 fn walk_directory(path: &Path, output: &mut Vec<FileEntry>) {
@@ -152,6 +142,35 @@ fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) {
             None => {
                 println!("New: {}", entry.path.display());
             }
+        }
+    }
+}
+
+fn save_scan(files: &[FileEntry], state_path: &Path) {
+    let file_result = File::create(state_path);
+    match file_result {
+        Ok(mut file) => {
+            for entry in files {
+                let duration_result = entry.modified.duration_since(UNIX_EPOCH);
+                match duration_result {
+                    Ok(duration) => {
+                        let seconds = duration.as_secs();
+
+                        match writeln!(file, "{}|{}|{}", entry.path.display(), entry.size, seconds) {
+                            Ok(_) => {},
+                            Err(err) => {
+                                eprintln!("Error: {err}");
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        eprintln!("Error: {err}");
+                    }
+                }
+            }
+        },
+        Err(err) => {
+            eprintln!("Error: {err}");
         }
     }
 }
