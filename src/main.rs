@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, println, vec};
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::time::{Duration, SystemTime};
@@ -64,59 +64,21 @@ fn main() {
 
     walk_directory(path, &mut files);
     println!("{} files were discovered\nContents", files.len());
-    for file in &files {
-        println!("{} - {} bytes last modified: {:?}", file.path.display(), file.size, file.modified);
-    }
 
     let test_time = SystemTime::now();
-    let temp_file_1: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file.txt"), 1200, test_time);
-    let temp_file_2: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file.txt"), 1200, test_time);
-    let temp_file_3: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file.txt"), 1000, test_time);
-    let temp_file_4: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file.txt"), 1200, test_time + Duration::from_secs(60));
+    let temp_file_1: FileEntry = FileEntry::new(PathBuf::from("C:\\myFiles\\ProgrammingProjects\\rustsync\\.git\\COMMIT_EDITMSG"), 1200, test_time);
+    let temp_file_2: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file2.txt"), 1200, test_time);
+    let temp_file_3: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file3.txt"), 1000, test_time);
+    let temp_file_4: FileEntry = FileEntry::new(PathBuf::from("C:\\example\\file4.txt"), 1200, test_time + Duration::from_secs(60));
 
-    let test_1: FileState = temp_file_1.compare(&temp_file_2);
-    let test_2: FileState = temp_file_1.compare(&temp_file_3);
-    let test_3: FileState = temp_file_1.compare(&temp_file_4);
+    let temp_files: Vec<FileEntry> = vec![
+        temp_file_1,
+        temp_file_2,
+        temp_file_3,
+        temp_file_4,
+    ];
 
-    println!("\n\nTest 1 -- Expected Result: Unchanged");
-    match test_1 {
-        FileState::Modified => {
-            println!("Modified");
-        },
-        FileState::Unchanged => {
-            println!("Unchanged");
-        },
-        _ => {
-            println!("Not Modified or Unchanged");
-        }
-    }
-
-    println!("Test 2 -- Expected Result: Modified");
-    match test_2 {
-        FileState::Modified => {
-            println!("Modified");
-        },
-        FileState::Unchanged => {
-            println!("Unchanged");
-        },
-        _ => {
-            println!("Not Modified or Unchanged");
-        }
-    }
-
-    println!("Test 3 -- Expected Result: Modified");
-    match test_3 {
-        FileState::Modified => {
-            println!("Modified");
-        },
-        FileState::Unchanged => {
-            println!("Unchanged");
-        },
-        _ => {
-            println!("Not Modified or Unchanged");
-        }
-    }
-
+    compare_scans(&files, &temp_files);
 }
 
 fn walk_directory(path: &Path, output: &mut Vec<FileEntry>) {
@@ -171,6 +133,25 @@ fn walk_directory(path: &Path, output: &mut Vec<FileEntry>) {
         Err(err) => {
             eprintln!("Error: {err}");
             return;
+        }
+    }
+}
+
+fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) {
+    for entry in current_files {
+        match previous_files.iter().find(|file| (**file).path == entry.path) {
+            Some(file) => {
+                let state: String = match entry.compare(file) {
+                    FileState::Modified => { String::from("Modified") },
+                    FileState::Unchanged => { String::from("Unchanged") },
+                    FileState::New => { String::from("New") }, 
+                };
+
+                println!("{}: {} - {} bytes last modified: {:?}", state, entry.path.display(), entry.size, entry.modified);
+            },
+            None => {
+                println!("New: {}", entry.path.display());
+            }
         }
     }
 }
