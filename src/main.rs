@@ -1,7 +1,7 @@
 use std::{env, eprintln, println, writeln};
 use std::path::{Path, PathBuf};
 use std::fs::{self, File};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, Duration, UNIX_EPOCH};
 use std::io::Write;
 
 #[derive(Debug)]
@@ -68,6 +68,10 @@ fn main() {
     println!("{} files were discovered", files.len());
 
     let state_path = Path::new("rustsync_state.txt");
+    let loaded_files: Vec<FileEntry> = load_scan(state_path);
+    if !loaded_files.is_empty() {
+        println!("Loaded {} previous files", loaded_files.len());
+    }
     save_scan(&files, state_path);
 }
 
@@ -173,4 +177,51 @@ fn save_scan(files: &[FileEntry], state_path: &Path) {
             eprintln!("Error: {err}");
         }
     }
+}
+
+fn load_scan(state_path: &Path) -> Vec<FileEntry> {
+    let mut files: Vec<FileEntry> = Vec::new();
+
+    if !state_path.exists() {
+        return files;
+    }
+
+    let state_path_string = fs::read_to_string(state_path);
+    match state_path_string {
+        Ok(contents) => {
+            for line in contents.lines() {
+                let parts: Vec<&str> = line.split('|').collect();
+                if parts.len() != 3 {
+                    continue;
+                }
+
+                let path: PathBuf = PathBuf::from(parts[0]);
+
+                let size_result = parts[1].parse::<u64>();
+                match size_result {
+                    Ok(size) => {
+                        let timestamp_result = parts[2].parse::<u64>();
+                        match timestamp_result {
+                            Ok(timestamp) => {
+                                let system_timestamp = UNIX_EPOCH + Duration::from_secs(timestamp);
+
+                                files.push(FileEntry::new(path, size, system_timestamp));
+                            },
+                            Err(err) => {
+                                eprintln!("Error: {err}");
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        eprintln!("Error: {err}");
+                    }
+                }
+            }
+        },
+        Err(err) => {
+            eprintln!("Error: {err}");
+        }
+    }
+
+    files
 }
