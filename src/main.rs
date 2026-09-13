@@ -1,17 +1,20 @@
-use std::env;
+use std::{env, eprintln};
 use std::path::{Path, PathBuf};
 use std::fs;
+use std::time::SystemTime;
 
 struct FileEntry {
     path: PathBuf,
     size: u64,
+    modified: SystemTime,
 }
 
 impl FileEntry {
-    fn new(path: PathBuf, size: u64) -> Self {
+    fn new(path: PathBuf, size: u64, modified: SystemTime) -> Self {
         Self {
             path,
             size,
+            modified,
         }
     }
 }
@@ -47,7 +50,7 @@ fn main() {
     walk_directory(path, &mut files);
     println!("{} files were discovered\nContents", files.len());
     for file in &files {
-        println!("{} - {} bytes", file.path.display(), file.size);
+        println!("{} - {} bytes last modified: {:?}", file.path.display(), file.size, file.modified);
     }
 }
 
@@ -65,10 +68,18 @@ fn walk_directory(path: &Path, output: &mut Vec<FileEntry>) {
                         match sub_dir {
                             Ok(file_type) => {
                                 if file_type.is_file() {
-                                    let     metadata = fs::metadata(&entry_path);
-                                    match   metadata {
+                                    let metadata = fs::metadata(&entry_path);
+                                    match metadata {
                                         Ok(meta) => {
-                                            output.push(FileEntry::new(entry_path, meta.len()));
+                                            let meta_modified = meta.modified();
+                                            match meta_modified {
+                                                Ok(modified) => {
+                                                    output.push(FileEntry::new(entry_path, meta.len(), modified));
+                                                },
+                                                Err(err) => {
+                                                    eprintln!("Error: {err}");
+                                                }
+                                            }
                                         },
                                         Err(err) => {
                                             eprintln!("Error: {err}");
