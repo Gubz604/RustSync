@@ -83,6 +83,7 @@ fn main() {
             },
             Err(err) => {
                 eprintln!("Error: {err}");
+                return;
             }
         }
     }
@@ -95,7 +96,7 @@ fn main() {
     println!("{} files were discovered\n\n", current_scan.len());
     compare_scans(&current_scan, &previous_scan);
 
-    backup_files(&current_scan, path, destination);
+    backup_files(&current_scan, &previous_scan, path, destination);
 
     save_scan(&current_scan, state_path);
 }
@@ -308,8 +309,23 @@ fn should_ignore(path: &Path) -> bool {
     }
 }
 
-fn backup_files(files: &[FileEntry], source_root: &Path, backup_root: &Path) {
-    for entry in files {
+fn backup_files(current_files: &[FileEntry], previous_files: &[FileEntry], source_root: &Path, backup_root: &Path) {
+    for entry in current_files {
+        let should_backup: bool = match previous_files.iter().find(|file| (**file).path == entry.path) {
+            Some(file) => {
+                match entry.compare(file) {
+                    FileState::Modified => true,
+                    FileState::Unchanged => false,
+                    _ => false
+                }
+            },
+            None => true,
+        };
+
+        if !should_backup {
+            continue;
+        }
+
         let source_file = source_root.join(&entry.path);
         let backup_file = backup_root.join(&entry.path);
 
