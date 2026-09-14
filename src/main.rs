@@ -12,6 +12,11 @@ enum FileState {
     Deleted,
 }
 
+struct FileChange<'a> {
+    file: &'a FileEntry,
+    state: FileState,
+}
+
 struct FileEntry {
     path: PathBuf,
     size: u64,
@@ -106,7 +111,7 @@ fn main() {
         }
     }
     println!("{} files were discovered\n\n", current_scan.len());
-    compare_scans(&current_scan, &previous_scan);
+    let changes = compare_scans(&current_scan, &previous_scan);
 
     match backup_files(&current_scan, &previous_scan, path, destination) {
         Ok(()) => {},
@@ -158,21 +163,17 @@ fn walk_directory(current_path: &Path, source_root: &Path, output: &mut Vec<File
     Ok(())
 }
 
-fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) {
+fn compare_scans<'a>(current_files: &'a [FileEntry], previous_files: &[FileEntry]) -> Vec<FileChange<'a>> {
+    let mut changes: Vec<FileChange> = Vec::new();
+
     for entry in current_files {
         match previous_files.iter().find(|file| (**file).path == entry.path) {
             Some(file) => {
-                let state: String = match entry.compare(file) {
-                    FileState::Modified => { String::from("Modified") },
-                    FileState::Unchanged => { String::from("Unchanged") },
-                    FileState::New => { String::from("New") }, 
-                    FileState::Deleted => { String::from("Deleted") },
-                };
-
-                println!("{}: {} - {} bytes last modified: {:?}", state, entry.path.display(), entry.size, entry.modified);
+                let state = entry.compare(file);
+                changes.push(FileChange { file: entry, state });
             },
             None => {
-                println!("New: {}", entry.path.display());
+                changes.push(FileChange { file: entry, state: FileState::New });
             }
         }
     }
@@ -187,12 +188,7 @@ fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) {
         }
     }
 
-    if !deleted_files_list.is_empty() {
-        println!("\n\nDeleted Files");
-        for item in deleted_files_list {
-            println!("Deleted: {}", item.path.display());
-        }
-    }
+    changes
 }
 
 fn save_scan(files: &[FileEntry], state_path: &Path) -> Result<(), std::io::Error> {
