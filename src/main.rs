@@ -109,7 +109,13 @@ fn main() {
             return;
         }
     }
-    save_scan(&current_scan, state_path);
+    match save_scan(&current_scan, state_path) {
+        Ok(()) => {},
+        Err(err) => {
+            eprintln!("Save failed: {err}");
+            return;
+        }
+    }
 }
 
 fn walk_directory(current_path: &Path, source_root: &Path, output: &mut Vec<FileEntry>) -> Result<(), std::io::Error> {
@@ -183,34 +189,25 @@ fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) {
     }
 }
 
-fn save_scan(files: &[FileEntry], state_path: &Path) {
-    let file_result = File::create(state_path);
-    match file_result {
-        Ok(mut file) => {
-            for entry in files {
-                let duration_result = entry.modified.duration_since(UNIX_EPOCH);
-                match duration_result {
-                    Ok(duration) => {
-                        let seconds = duration.as_secs();
-                        let nanoseconds = duration.subsec_nanos();
+fn save_scan(files: &[FileEntry], state_path: &Path) -> Result<(), std::io::Error> {
+    let mut file = File::create(state_path)?;
 
-                        match writeln!(file, "{}|{}|{}|{}", entry.path.display(), entry.size, seconds, nanoseconds) {
-                            Ok(_) => {},
-                            Err(err) => {
-                                eprintln!("Error: {err}");
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        eprintln!("Error: {err}");
-                    }
-                }
+    for entry in files {
+        match entry.modified.duration_since(UNIX_EPOCH) {
+            Ok(duration) => {
+                let seconds = duration.as_secs();
+                let nanoseconds = duration.subsec_nanos();
+
+                writeln!(file, "{}|{}|{}|{}", entry.path.display(), entry.size, seconds, nanoseconds)?;
+            },
+            Err(err) => {
+                eprintln!("Timestamp error: {err}");
             }
-        },
-        Err(err) => {
-            eprintln!("Error: {err}");
         }
     }
+
+
+    Ok(())
 }
 
 fn load_scan(state_path: &Path) -> Vec<FileEntry> {
