@@ -96,8 +96,13 @@ fn main() {
     println!("{} files were discovered\n\n", current_scan.len());
     compare_scans(&current_scan, &previous_scan);
 
-    backup_files(&current_scan, &previous_scan, path, destination);
-
+    match backup_files(&current_scan, &previous_scan, path, destination) {
+        Ok(()) => {},
+        Err(err) => {
+            eprintln!("Backup failed: err{err}");
+            return;
+        }
+    }
     save_scan(&current_scan, state_path);
 }
 
@@ -309,7 +314,7 @@ fn should_ignore(path: &Path) -> bool {
     }
 }
 
-fn backup_files(current_files: &[FileEntry], previous_files: &[FileEntry], source_root: &Path, backup_root: &Path) {
+fn backup_files(current_files: &[FileEntry], previous_files: &[FileEntry], source_root: &Path, backup_root: &Path) -> Result<(), std::io::Error> {
     for entry in current_files {
         let should_backup: bool = match previous_files.iter().find(|file| (**file).path == entry.path) {
             Some(file) => {
@@ -329,27 +334,15 @@ fn backup_files(current_files: &[FileEntry], previous_files: &[FileEntry], sourc
         let source_file = source_root.join(&entry.path);
         let backup_file = backup_root.join(&entry.path);
 
-        let parent_directory_option = backup_file.parent();
-        match parent_directory_option {
+        match backup_file.parent() {
             Some(path) => {
-                let directory = fs::create_dir_all(path);
-                match directory {
-                    Ok(()) => {
-                        match fs::copy(source_file, backup_file) {
-                            Ok(bytes) => {
-                                println!("Copied {} ({} bytes)", entry.path.display(), bytes);
-                            },
-                            Err(err) => {
-                                eprintln!("Error: {err}");
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        eprintln!("Error: {err}");
-                    }
-                }
+                fs::create_dir_all(path)?;
+                let bytes = fs::copy(source_file, backup_file)?; 
+                println!("Copied {} ({} bytes)", entry.path.display(), bytes);
             },
             None => {}
         }
     }
+
+    Ok(())
 }
