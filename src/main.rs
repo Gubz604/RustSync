@@ -114,6 +114,8 @@ fn main() {
     println!("{} files were discovered\n\n", current_scan.len());
 
     let changes = compare_scans(&current_scan, &previous_scan);
+    print_changes(&changes);
+
     match backup_files(&changes, path, destination) {
         Ok(()) => {},
         Err(err) => {
@@ -299,4 +301,23 @@ fn backup_files(changes: &[FileChange], source_root: &Path, backup_root: &Path) 
     }
 
     Ok(())
+}
+
+fn print_changes(changes: &[FileChange]) {
+    for change in changes {
+        match change.state {
+            FileState::Modified => {
+                println!("Modified: {}", change.path.display());
+            },
+            FileState::New => {
+                println!("New: {}", change.path.display());
+            },
+            FileState::Unchanged => {
+                println!("Unchanged: {}", change.path.display());
+            },
+            FileState::Deleted => {
+                println!("Deleted: {}", change.path.display());
+            },
+        }
+    }
 }
