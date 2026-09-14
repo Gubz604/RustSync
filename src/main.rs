@@ -102,6 +102,7 @@ fn main() {
             return;
         }
     };
+    
     let mut current_scan: Vec<FileEntry> = Vec::new();
     match walk_directory(path, path, &mut current_scan) {
         Ok(()) => {},
@@ -111,15 +112,16 @@ fn main() {
         }
     }
     println!("{} files were discovered\n\n", current_scan.len());
-    let changes = compare_scans(&current_scan, &previous_scan);
 
-    match backup_files(&current_scan, &previous_scan, path, destination) {
+    let changes = compare_scans(&current_scan, &previous_scan);
+    match backup_files(&changes, path, destination) {
         Ok(()) => {},
         Err(err) => {
             eprintln!("Backup failed: {err}");
             return;
         }
     }
+
     match save_scan(&current_scan, state_path) {
         Ok(()) => {},
         Err(err) => {
@@ -271,31 +273,27 @@ fn should_ignore(path: &Path) -> bool {
     }
 }
 
-fn backup_files(current_files: &[FileEntry], previous_files: &[FileEntry], source_root: &Path, backup_root: &Path) -> Result<(), std::io::Error> {
-    for entry in current_files {
-        let should_backup: bool = match previous_files.iter().find(|file| (**file).path == entry.path) {
-            Some(file) => {
-                match entry.compare(file) {
-                    FileState::Modified => true,
-                    FileState::Unchanged => false,
-                    _ => false
-                }
-            },
-            None => true,
+fn backup_files(changes: &[FileChange], source_root: &Path, backup_root: &Path) -> Result<(), std::io::Error> {
+    for change in changes {
+        let should_backup: bool = match change.state {
+            FileState::Modified => true,
+            FileState::New => true,
+            FileState::Deleted => false,
+            FileState::Unchanged => false,
         };
 
         if !should_backup {
             continue;
         }
 
-        let source_file = source_root.join(&entry.path);
-        let backup_file = backup_root.join(&entry.path);
+        let source_file = source_root.join(&change.file.path);
+        let backup_file = backup_root.join(&change.file.path);
 
         match backup_file.parent() {
             Some(path) => {
                 fs::create_dir_all(path)?;
                 let bytes = fs::copy(source_file, backup_file)?; 
-                println!("Copied {} ({} bytes)", entry.path.display(), bytes);
+                println!("Copied {} ({} bytes)", change.file.path.display(), bytes);
             },
             None => {}
         }
