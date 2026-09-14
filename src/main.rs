@@ -44,10 +44,10 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
 
-    if args.len() == 2 {
-        println!("Source directory: {}", args[1]);  
+    if args.len() == 3 {
+        println!("Source directory: {}\nBackup destination: {}", args[1], args[2]);  
     } else {
-        eprintln!("Usage: rustsync <source_directory>");
+        eprintln!("Usage: rustsync <source_directory> <destination_directory>");
         return;
     }
 
@@ -59,10 +59,32 @@ fn main() {
     }
 
     if path.is_dir() {
-        println!("Source directory is valid\n");
+        println!("Source directory is valid");
     } else {
         eprintln!("Error: source path is not a directory");
         return;
+    }
+
+    let destination = Path::new(&args[2]);
+
+    if destination.exists() {
+        if !destination.is_dir() {
+            eprintln!("Error: destination is not a directory");
+            return;
+        }
+    }
+
+    if destination.is_dir() {
+        println!("Destination directory is valid\n");
+    } else {
+        match fs::create_dir_all(destination) {
+            Ok(()) => {
+                println!("Destination directory successfully created: {}", destination.display());
+            },
+            Err(err) => {
+                eprintln!("Error: {err}");
+            }
+        }
     }
      // ------------- End Validate arguments -------------
 
@@ -72,6 +94,8 @@ fn main() {
     walk_directory(path, path, &mut current_scan);
     println!("{} files were discovered\n\n", current_scan.len());
     compare_scans(&current_scan, &previous_scan);
+
+    backup_files(&current_scan, path, destination);
 
     save_scan(&current_scan, state_path);
 }
@@ -280,6 +304,36 @@ fn should_ignore(path: &Path) -> bool {
         },
         None => {
             return false;
+        }
+    }
+}
+
+fn backup_files(files: &[FileEntry], source_root: &Path, backup_root: &Path) {
+    for entry in files {
+        let source_file = source_root.join(&entry.path);
+        let backup_file = backup_root.join(&entry.path);
+
+        let parent_directory_option = backup_file.parent();
+        match parent_directory_option {
+            Some(path) => {
+                let directory = fs::create_dir_all(path);
+                match directory {
+                    Ok(()) => {
+                        match fs::copy(source_file, backup_file) {
+                            Ok(bytes) => {
+                                println!("Copied {} ({} bytes)", entry.path.display(), bytes);
+                            },
+                            Err(err) => {
+                                eprintln!("Error: {err}");
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        eprintln!("Error: {err}");
+                    }
+                }
+            },
+            None => {}
         }
     }
 }
