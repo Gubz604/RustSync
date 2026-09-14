@@ -233,30 +233,24 @@ fn load_scan(state_path: &Path) -> Result<Vec<FileEntry>, std::io::Error> {
 
         let path: PathBuf = PathBuf::from(parts[0]);
 
-        match parts[1].parse::<u64>() {
-            Ok(size) => {
-                match parts[2].parse::<u64>() {
-                    Ok(timestamp_sec) => {
-                        match parts[3].parse::<u32>() {
-                            Ok(timestamp_nano) => {
-                                let system_timestamp = UNIX_EPOCH + Duration::new(timestamp_sec, timestamp_nano);
+        let Ok(size) = parts[1].parse::<u64>() else {
+            eprintln!("Error retrieving file size during loading: {line}");
+            continue;
+        };
 
-                                files.push(FileEntry::new(path, size, system_timestamp));
-                            },
-                            Err(err) => {
-                                eprintln!("Error getting file modification nanoseconds during loading: {err}");
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        eprintln!("Error getting file modification seconds during loading: {err}");
-                    }
-                }
-            },
-            Err(err) => {
-                eprintln!("Error retreiving file size during loading: {err}");
-            }
-        }
+        let Ok(timestamp_sec) = parts[2].parse::<u64>() else {
+            eprintln!("Error getting file modification seconds during loading: {line}");
+            continue;
+        };
+
+        let Ok(timestamp_nano) = parts[3].parse::<u32>() else {
+            eprintln!("Error getting file modification nanoseconds during loading: {line}");
+            continue;
+        };
+
+        let system_timestamp = UNIX_EPOCH + Duration::new(timestamp_sec, timestamp_nano);
+
+        files.push(FileEntry::new(path, size, system_timestamp));
     }
 
     Ok(files)
