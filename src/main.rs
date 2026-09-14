@@ -70,6 +70,7 @@ fn main() {
     let previous_scan: Vec<FileEntry> = load_scan(state_path);
     let mut current_scan: Vec<FileEntry> = Vec::new();
     walk_directory(path, &mut current_scan);
+    println!("{} files were discovered\n\n", current_scan.len());
     compare_scans(&current_scan, &previous_scan);
 
     save_scan(&current_scan, state_path);
@@ -85,6 +86,10 @@ fn walk_directory(path: &Path, output: &mut Vec<FileEntry>) {
                     Ok(dir_entry) => {
                         let sub_dir = dir_entry.file_type();
                         let entry_path = dir_entry.path();
+
+                        if should_ignore(&entry_path) {
+                            continue;
+                        }
                         
                         match sub_dir {
                             Ok(file_type) => {
@@ -251,4 +256,23 @@ fn load_scan(state_path: &Path) -> Vec<FileEntry> {
     }
 
     files
+}
+
+fn should_ignore(path: &Path) -> bool {
+    let ignore_list = [
+        "target",
+        ".git",
+        "rustsync_state.txt",
+    ];
+    let filename_option = path.file_name();
+
+    match filename_option {
+        Some(name) => {
+            let filename = name.to_string_lossy();
+            return ignore_list.contains(&filename.as_ref())
+        },
+        None => {
+            return false;
+        }
+    }
 }
