@@ -90,7 +90,13 @@ fn main() {
      // ------------- End Validate arguments -------------
 
     println!("RustSync");
-    let previous_scan: Vec<FileEntry> = load_scan(state_path);
+    let previous_scan: Vec<FileEntry> = match load_scan(state_path) {
+        Ok(previous) => { previous },
+        Err(err) => {
+            eprintln!("Error loading previous scan: {err}");
+            return;
+        }
+    };
     let mut current_scan: Vec<FileEntry> = Vec::new();
     match walk_directory(path, path, &mut current_scan) {
         Ok(()) => {},
@@ -105,7 +111,7 @@ fn main() {
     match backup_files(&current_scan, &previous_scan, path, destination) {
         Ok(()) => {},
         Err(err) => {
-            eprintln!("Backup failed: err{err}");
+            eprintln!("Backup failed: {err}");
             return;
         }
     }
@@ -210,59 +216,50 @@ fn save_scan(files: &[FileEntry], state_path: &Path) -> Result<(), std::io::Erro
     Ok(())
 }
 
-fn load_scan(state_path: &Path) -> Vec<FileEntry> {
+fn load_scan(state_path: &Path) -> Result<Vec<FileEntry>, std::io::Error> {
     let mut files: Vec<FileEntry> = Vec::new();
 
     if !state_path.exists() {
-        return files;
+        return Ok(files);
     }
 
-    let state_path_string = fs::read_to_string(state_path);
-    match state_path_string {
-        Ok(contents) => {
-            for line in contents.lines() {
-                let parts: Vec<&str> = line.split('|').collect();
-                if parts.len() != 4 {
-                    continue;
-                }
+    let contents = fs::read_to_string(state_path)?;
 
-                let path: PathBuf = PathBuf::from(parts[0]);
+    for line in contents.lines() {
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() != 4 {
+            continue;
+        }
 
-                let size_result = parts[1].parse::<u64>();
-                match size_result {
-                    Ok(size) => {
-                        let timestamp_sec_result = parts[2].parse::<u64>();
-                        match timestamp_sec_result {
-                            Ok(timestamp_sec) => {
-                                let timestamp_nano_result = parts[3].parse::<u32>();
-                                match timestamp_nano_result {
-                                    Ok(timestamp_nano) => {
-                                        let system_timestamp = UNIX_EPOCH + Duration::new(timestamp_sec, timestamp_nano);
+        let path: PathBuf = PathBuf::from(parts[0]);
 
-                                        files.push(FileEntry::new(path, size, system_timestamp));
-                                    },
-                                    Err(err) => {
-                                        eprintln!("Error: {err}");
-                                    }
-                                }
+        match parts[1].parse::<u64>() {
+            Ok(size) => {
+                match parts[2].parse::<u64>() {
+                    Ok(timestamp_sec) => {
+                        match parts[3].parse::<u32>() {
+                            Ok(timestamp_nano) => {
+                                let system_timestamp = UNIX_EPOCH + Duration::new(timestamp_sec, timestamp_nano);
+
+                                files.push(FileEntry::new(path, size, system_timestamp));
                             },
                             Err(err) => {
-                                eprintln!("Error: {err}");
+                                eprintln!("Error getting file modification nanoseconds during loading: {err}");
                             }
                         }
                     },
                     Err(err) => {
-                        eprintln!("Error: {err}");
+                        eprintln!("Error getting file modification seconds during loading: {err}");
                     }
                 }
+            },
+            Err(err) => {
+                eprintln!("Error retreiving file size during loading: {err}");
             }
-        },
-        Err(err) => {
-            eprintln!("Error: {err}");
         }
     }
 
-    files
+    Ok(files)
 }
 
 fn should_ignore(path: &Path) -> bool {
