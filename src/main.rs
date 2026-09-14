@@ -9,6 +9,7 @@ enum FileState {
     New,
     Modified,
     Unchanged,
+    Deleted,
 }
 
 struct FileEntry {
@@ -138,6 +139,7 @@ fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) {
                     FileState::Modified => { String::from("Modified") },
                     FileState::Unchanged => { String::from("Unchanged") },
                     FileState::New => { String::from("New") }, 
+                    FileState::Deleted => { String::from("Deleted") },
                 };
 
                 println!("{}: {} - {} bytes last modified: {:?}", state, entry.path.display(), entry.size, entry.modified);
@@ -145,6 +147,23 @@ fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) {
             None => {
                 println!("New: {}", entry.path.display());
             }
+        }
+    }
+
+    let mut deleted_files_list: Vec<&FileEntry> = Vec::new();
+    for entry in previous_files {
+        match current_files.iter().find(|file| (**file).path == entry.path) {
+            Some(_) => {},
+            None => {
+                deleted_files_list.push(entry);
+            }
+        }
+    }
+
+    if !deleted_files_list.is_empty() {
+        println!("\n\nDeleted Files");
+        for item in deleted_files_list {
+            println!("Deleted: {}", item.path.display());
         }
     }
 }
