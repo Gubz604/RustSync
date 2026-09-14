@@ -69,15 +69,15 @@ fn main() {
     println!("RustSync");
     let previous_scan: Vec<FileEntry> = load_scan(state_path);
     let mut current_scan: Vec<FileEntry> = Vec::new();
-    walk_directory(path, &mut current_scan);
+    walk_directory(path, path, &mut current_scan);
     println!("{} files were discovered\n\n", current_scan.len());
     compare_scans(&current_scan, &previous_scan);
 
     save_scan(&current_scan, state_path);
 }
 
-fn walk_directory(path: &Path, output: &mut Vec<FileEntry>) {
-    let content = fs::read_dir(path);
+fn walk_directory(current_path: &Path, source_root: &Path, output: &mut Vec<FileEntry>) {
+    let content = fs::read_dir(current_path);
 
     match content {
         Ok(dir) => {
@@ -100,7 +100,14 @@ fn walk_directory(path: &Path, output: &mut Vec<FileEntry>) {
                                             let meta_modified = meta.modified();
                                             match meta_modified {
                                                 Ok(modified) => {
-                                                    output.push(FileEntry::new(entry_path, meta.len(), modified));
+                                                    match entry_path.strip_prefix(source_root) {
+                                                        Ok(relative_path) => {
+                                                            output.push(FileEntry::new(relative_path.to_path_buf(), meta.len(), modified));
+                                                        },
+                                                        Err(err) => {
+                                                            eprintln!("Error: {err}");
+                                                        }
+                                                    }
                                                 },
                                                 Err(err) => {
                                                     eprintln!("Error: {err}");
@@ -112,7 +119,7 @@ fn walk_directory(path: &Path, output: &mut Vec<FileEntry>) {
                                         }
                                     }
                                 } else if file_type.is_dir() {
-                                    walk_directory(&entry_path, output);
+                                    walk_directory(&entry_path, &source_root, output);
                                 } else {
                                     println!("{} is not supported", entry_path.display());
                                     continue;
