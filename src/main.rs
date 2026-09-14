@@ -92,7 +92,13 @@ fn main() {
     println!("RustSync");
     let previous_scan: Vec<FileEntry> = load_scan(state_path);
     let mut current_scan: Vec<FileEntry> = Vec::new();
-    walk_directory(path, path, &mut current_scan);
+    match walk_directory(path, path, &mut current_scan) {
+        Ok(()) => {},
+        Err(err) => {
+            eprintln!("Scan failed: {err}");
+            return;
+        }
+    }
     println!("{} files were discovered\n\n", current_scan.len());
     compare_scans(&current_scan, &previous_scan);
 
@@ -106,71 +112,38 @@ fn main() {
     save_scan(&current_scan, state_path);
 }
 
-fn walk_directory(current_path: &Path, source_root: &Path, output: &mut Vec<FileEntry>) {
-    let content = fs::read_dir(current_path);
+fn walk_directory(current_path: &Path, source_root: &Path, output: &mut Vec<FileEntry>) -> Result<(), std::io::Error> {
+    let content = fs::read_dir(current_path)?;
 
-    match content {
-        Ok(dir) => {
-            for entry in dir {
-                match entry {
-                    Ok(dir_entry) => {
-                        let sub_dir = dir_entry.file_type();
-                        let entry_path = dir_entry.path();
+    for entry in content {
+        let dir_entry = entry?;
+        let file_type = dir_entry.file_type()?;
+        let entry_path = dir_entry.path();
 
-                        if should_ignore(&entry_path) {
-                            continue;
-                        }
-                        
-                        match sub_dir {
-                            Ok(file_type) => {
-                                if file_type.is_file() {
-                                    let metadata = fs::metadata(&entry_path);
-                                    match metadata {
-                                        Ok(meta) => {
-                                            let meta_modified = meta.modified();
-                                            match meta_modified {
-                                                Ok(modified) => {
-                                                    match entry_path.strip_prefix(source_root) {
-                                                        Ok(relative_path) => {
-                                                            output.push(FileEntry::new(relative_path.to_path_buf(), meta.len(), modified));
-                                                        },
-                                                        Err(err) => {
-                                                            eprintln!("Error: {err}");
-                                                        }
-                                                    }
-                                                },
-                                                Err(err) => {
-                                                    eprintln!("Error: {err}");
-                                                }
-                                            }
-                                        },
-                                        Err(err) => {
-                                            eprintln!("Error: {err}");
-                                        }
-                                    }
-                                } else if file_type.is_dir() {
-                                    walk_directory(&entry_path, &source_root, output);
-                                } else {
-                                    println!("{} is not supported", entry_path.display());
-                                    continue;
-                                }
-                            },
-                            Err(err) => {
-                                eprintln!("Error: {err}");
-                            }
-                        }
-                    },
-                    Err(err) => {
-                        eprintln!("Error: {err}");
-                    }
-                }
-            } 
-        },
-        Err(err) => {
-            eprintln!("Error: {err}");
-            return;
+        if should_ignore(&entry_path) {
+            continue;
         }
-    }
+
+        if file_type.is_file() {
+            let metadata = fs::metadata(&entry_path)?;
+            let meta_modified = metadata.modified()?;
+            match entry_path.strip_prefix(source_root) {
+                Ok(relative_path) => {
+                    output.push(FileEntry::new(relative_path.to_path_buf(), metadata.len(), meta_modified));
+                },
+                Err(err) => {
+                    eprintln!("Strip Prefix Error: {err}");
+                }
+            }
+        } else if file_type.is_dir() {
+            walk_directory(&entry_path, source_root, output)?;
+        } else {
+            println!("{} is not supported", entry_path.display());
+            continue;
+        }
+    } 
+    
+    Ok(())
 }
 
 fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) {
