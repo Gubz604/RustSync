@@ -37,7 +37,9 @@ impl FileEntry {
 }
 
 fn main() {
-    println!("RustSync");
+    let state_path = Path::new("rustsync_state.txt");
+
+    // ------------- Collect and Validate arguments -------------
 
     let args: Vec<String> = env::args().collect();
 
@@ -61,18 +63,15 @@ fn main() {
         eprintln!("Error: source path is not a directory");
         return;
     }
+     // ------------- End Validate arguments -------------
 
-    let mut files: Vec<FileEntry> = Vec::new();
+    println!("RustSync");
+    let previous_scan: Vec<FileEntry> = load_scan(state_path);
+    let mut current_scan: Vec<FileEntry> = Vec::new();
+    walk_directory(path, &mut current_scan);
+    compare_scans(&current_scan, &previous_scan);
 
-    walk_directory(path, &mut files);
-    println!("{} files were discovered", files.len());
-
-    let state_path = Path::new("rustsync_state.txt");
-    let loaded_files: Vec<FileEntry> = load_scan(state_path);
-    if !loaded_files.is_empty() {
-        println!("Loaded {} previous files", loaded_files.len());
-    }
-    save_scan(&files, state_path);
+    save_scan(&current_scan, state_path);
 }
 
 fn walk_directory(path: &Path, output: &mut Vec<FileEntry>) {
@@ -159,8 +158,9 @@ fn save_scan(files: &[FileEntry], state_path: &Path) {
                 match duration_result {
                     Ok(duration) => {
                         let seconds = duration.as_secs();
+                        let nanoseconds = duration.subsec_nanos();
 
-                        match writeln!(file, "{}|{}|{}", entry.path.display(), entry.size, seconds) {
+                        match writeln!(file, "{}|{}|{}|{}", entry.path.display(), entry.size, seconds, nanoseconds) {
                             Ok(_) => {},
                             Err(err) => {
                                 eprintln!("Error: {err}");
@@ -191,7 +191,7 @@ fn load_scan(state_path: &Path) -> Vec<FileEntry> {
         Ok(contents) => {
             for line in contents.lines() {
                 let parts: Vec<&str> = line.split('|').collect();
-                if parts.len() != 3 {
+                if parts.len() != 4 {
                     continue;
                 }
 
@@ -200,12 +200,20 @@ fn load_scan(state_path: &Path) -> Vec<FileEntry> {
                 let size_result = parts[1].parse::<u64>();
                 match size_result {
                     Ok(size) => {
-                        let timestamp_result = parts[2].parse::<u64>();
-                        match timestamp_result {
-                            Ok(timestamp) => {
-                                let system_timestamp = UNIX_EPOCH + Duration::from_secs(timestamp);
+                        let timestamp_sec_result = parts[2].parse::<u64>();
+                        match timestamp_sec_result {
+                            Ok(timestamp_sec) => {
+                                let timestamp_nano_result = parts[3].parse::<u32>();
+                                match timestamp_nano_result {
+                                    Ok(timestamp_nano) => {
+                                        let system_timestamp = UNIX_EPOCH + Duration::new(timestamp_sec, timestamp_nano);
 
-                                files.push(FileEntry::new(path, size, system_timestamp));
+                                        files.push(FileEntry::new(path, size, system_timestamp));
+                                    },
+                                    Err(err) => {
+                                        eprintln!("Error: {err}");
+                                    }
+                                }
                             },
                             Err(err) => {
                                 eprintln!("Error: {err}");
