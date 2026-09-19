@@ -92,6 +92,18 @@ fn main() {
             }
         }
     }
+
+    match validate_paths(path, destination) {
+        Ok(true) => { println!("Path canonicalization succeeded!")},
+        Ok(false) => {
+            eprintln!("Destination cannot be inside source directory");
+            return;
+        },
+        Err(err) => {
+            eprintln!("Path validation failed: {err}");
+            return;
+        }
+    }
      // ------------- End Validate arguments -------------
 
     println!("RustSync");
@@ -320,4 +332,11 @@ fn print_changes(changes: &[FileChange]) {
             },
         }
     }
+}
+
+fn validate_paths(source: &Path, destination: &Path) -> Result<bool, std::io::Error> {
+    let source_canonicalized = fs::canonicalize(source)?;
+    let destination_canonicalized = fs::canonicalize(destination)?;
+
+    Ok(!destination_canonicalized.starts_with(source_canonicalized))
 }
