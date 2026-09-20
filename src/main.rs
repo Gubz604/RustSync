@@ -400,7 +400,9 @@ fn hash_file(path: &Path) -> Result<String, std::io::Error> {
 
 #[cfg(test)]
 mod tests{
-    use super::*;
+    use std::assert_eq;
+
+use super::*;
 
 
     #[test]
@@ -441,5 +443,86 @@ mod tests{
         let result = first.compare(&second);
 
         assert_eq!(result, FileState::Modified);
+    }
+
+    #[test]
+    fn test_compare_scans_file_unchanged() {
+        let previous = vec![
+            FileEntry::new(PathBuf::from("test1"), 20, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
+        ];
+
+        let current = vec![
+            FileEntry::new(PathBuf::from("test1"), 20, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
+        ];
+
+        let changes: Vec<FileChange> = compare_scans(&current, &previous);
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].path, PathBuf::from("test1"));
+        assert_eq!(changes[0].state, FileState::Unchanged);
+    }
+
+    #[test]
+    fn test_compare_scans_file_new() {
+        let previous = vec![];
+
+        let current = vec![
+            FileEntry::new(PathBuf::from("test1"), 20, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
+        ];
+
+        let changes: Vec<FileChange> = compare_scans(&current, &previous);
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].path, PathBuf::from("test1"));
+        assert_eq!(changes[0].state, FileState::New);
+    }
+
+    #[test]
+    fn test_compare_scans_file_modified_hashed() {
+        let previous = vec![
+            FileEntry::new(PathBuf::from("test1"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
+        ];
+
+        let current = vec![
+            FileEntry::new(PathBuf::from("test1"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_2")),
+        ];
+
+        let changes: Vec<FileChange> = compare_scans(&current, &previous);
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].path, PathBuf::from("test1"));
+        assert_eq!(changes[0].state, FileState::Modified);
+    }
+
+    #[test]
+    fn test_compare_scans_file_modified_size() {
+        let previous = vec![
+            FileEntry::new(PathBuf::from("test1"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
+        ];
+
+        let current = vec![
+            FileEntry::new(PathBuf::from("test1"), 20, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
+        ];
+
+        let changes: Vec<FileChange> = compare_scans(&current, &previous);
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].path, PathBuf::from("test1"));
+        assert_eq!(changes[0].state, FileState::Modified);
+    }
+
+    #[test]
+    fn test_compare_scans_file_deleted() {
+        let previous = vec![
+            FileEntry::new(PathBuf::from("test1"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
+        ];
+
+        let current = vec![];
+
+        let changes: Vec<FileChange> = compare_scans(&current, &previous);
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].path, PathBuf::from("test1"));
+        assert_eq!(changes[0].state, FileState::Deleted);
     }
 }
