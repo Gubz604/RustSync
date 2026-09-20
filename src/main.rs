@@ -1,50 +1,19 @@
 use std::{env, eprintln, println, writeln};
 use std::path::{Path, PathBuf};
 use std::fs::{self, File};
-use std::time::{SystemTime, Duration, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 use std::io::{Write, Read};
 use std::collections::HashMap;
 use sha2::{Digest, Sha256};
 use std::fmt::Write as FmtWrite;
 
-#[derive(Debug, PartialEq)]
-enum FileState {
-    New,
-    Modified,
-    Unchanged,
-    Deleted,
-}
+mod scanner;
+
+use scanner::{FileEntry, FileState};
 
 struct FileChange {
     path: PathBuf,
     state: FileState,
-}
-
-struct FileEntry {
-    path: PathBuf,
-    size: u64,
-    modified: SystemTime,
-    hash: String,
-}
-
-impl FileEntry {
-    fn new(path: PathBuf, size: u64, modified: SystemTime, hash: String) -> Self {
-        Self {
-            path,
-            size,
-            modified,
-            hash,
-        }
-    }
-
-    
-    fn compare(&self, file: &FileEntry) -> FileState {
-        if self.path == file.path && self.size == file.size && self.hash == file.hash {
-            return FileState::Unchanged
-        }
-
-        FileState::Modified
-    }
 }
 
 fn main() {
