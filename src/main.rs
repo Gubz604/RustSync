@@ -7,10 +7,12 @@ use std::{env, eprintln, println};
 mod backup;
 mod scanner;
 mod state;
+mod network;
 
 use backup::backup_files;
 use scanner::{FileChange, FileEntry, FileState, compare_scans, walk_directory};
 use state::{load_scan, save_scan};
+use network::check_server;
 
 fn main() {
     let state_path = Path::new("rustsync_state.txt");
@@ -130,6 +132,8 @@ fn main() {
     } else {
         println!("Dry run: no files were copied and state was not updated");
     }
+
+    check_server();
 }
 
 fn print_changes(changes: &[FileChange]) {
