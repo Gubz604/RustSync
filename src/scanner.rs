@@ -1,10 +1,10 @@
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::fmt::Write as FmtWrite;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use std::io::Read;
-use std::fs::{self, File};
-use std::collections::HashMap;
-use sha2::{Digest, Sha256};
-use std::fmt::Write as FmtWrite;
 
 pub struct FileChange {
     pub path: PathBuf,
@@ -36,10 +36,9 @@ impl FileEntry {
         }
     }
 
-    
     pub fn compare(&self, file: &FileEntry) -> FileState {
         if self.path == file.path && self.size == file.size && self.hash == file.hash {
-            return FileState::Unchanged
+            return FileState::Unchanged;
         }
 
         FileState::Modified
@@ -48,7 +47,12 @@ impl FileEntry {
 
 // --------------------------------- Functions ---------------------------------
 
-pub fn walk_directory(current_path: &Path, source_root: &Path, previous_files: &[FileEntry], output: &mut Vec<FileEntry>) -> Result<(), std::io::Error> {
+pub fn walk_directory(
+    current_path: &Path,
+    source_root: &Path,
+    previous_files: &[FileEntry],
+    output: &mut Vec<FileEntry>,
+) -> Result<(), std::io::Error> {
     let content = fs::read_dir(current_path)?;
 
     for entry in content {
@@ -66,19 +70,39 @@ pub fn walk_directory(current_path: &Path, source_root: &Path, previous_files: &
             let meta_size = metadata.len();
             match entry_path.strip_prefix(source_root) {
                 Ok(relative_path) => {
-                    match previous_files.iter().find(|file| (**file).path == relative_path) {
+                    match previous_files
+                        .iter()
+                        .find(|file| (**file).path == relative_path)
+                    {
                         Some(previous_file) => {
-                            if previous_file.size == meta_size && previous_file.modified == meta_modified {
-                                output.push(FileEntry::new(relative_path.to_path_buf(), meta_size, meta_modified, previous_file.hash.clone()));
+                            if previous_file.size == meta_size
+                                && previous_file.modified == meta_modified
+                            {
+                                output.push(FileEntry::new(
+                                    relative_path.to_path_buf(),
+                                    meta_size,
+                                    meta_modified,
+                                    previous_file.hash.clone(),
+                                ));
                             } else {
-                                output.push(FileEntry::new(relative_path.to_path_buf(), meta_size, meta_modified, hash_file(&entry_path)?));
+                                output.push(FileEntry::new(
+                                    relative_path.to_path_buf(),
+                                    meta_size,
+                                    meta_modified,
+                                    hash_file(&entry_path)?,
+                                ));
                             }
-                        },
+                        }
                         None => {
-                            output.push(FileEntry::new(relative_path.to_path_buf(), meta_size, meta_modified, hash_file(&entry_path)?));
+                            output.push(FileEntry::new(
+                                relative_path.to_path_buf(),
+                                meta_size,
+                                meta_modified,
+                                hash_file(&entry_path)?,
+                            ));
                         }
                     }
-                },
+                }
                 Err(err) => {
                     eprintln!("Strip Prefix Error: {err}");
                 }
@@ -89,8 +113,8 @@ pub fn walk_directory(current_path: &Path, source_root: &Path, previous_files: &
             println!("{} is not supported", entry_path.display());
             continue;
         }
-    } 
-    
+    }
+
     Ok(())
 }
 
@@ -107,24 +131,32 @@ pub fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) 
         current_lookup.insert(entry.path.as_path(), entry);
     }
 
-
     for entry in current_files {
         match previous_lookup.get(entry.path.as_path()) {
             Some(file) => {
                 let state = entry.compare(file);
-                changes.push(FileChange { path: entry.path.clone(), state });
-            },
+                changes.push(FileChange {
+                    path: entry.path.clone(),
+                    state,
+                });
+            }
             None => {
-                changes.push(FileChange { path: entry.path.clone(), state: FileState::New });
+                changes.push(FileChange {
+                    path: entry.path.clone(),
+                    state: FileState::New,
+                });
             }
         }
     }
 
     for entry in previous_files {
         match current_lookup.get(entry.path.as_path()) {
-            Some(_) => {},
+            Some(_) => {}
             None => {
-                changes.push(FileChange { path: entry.path.clone(), state: FileState::Deleted });
+                changes.push(FileChange {
+                    path: entry.path.clone(),
+                    state: FileState::Deleted,
+                });
             }
         }
     }
@@ -133,19 +165,15 @@ pub fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) 
 }
 
 fn should_ignore(path: &Path) -> bool {
-    let ignore_list = [
-        "target",
-        ".git",
-        "rustsync_state.txt",
-    ];
+    let ignore_list = ["target", ".git", "rustsync_state.txt"];
     let filename_option = path.file_name();
 
     match filename_option {
         Some(name) => {
             let filename = name.to_string_lossy();
-            return ignore_list.contains(&filename.as_ref())
-        },
-        None => false
+            return ignore_list.contains(&filename.as_ref());
+        }
+        None => false,
     }
 }
 

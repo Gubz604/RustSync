@@ -1,7 +1,7 @@
-use std::time::{Duration, UNIX_EPOCH};
 use std::fs::{self, File};
-use std::path::{Path, PathBuf};
 use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, UNIX_EPOCH};
 
 use crate::scanner::FileEntry;
 
@@ -14,14 +14,21 @@ pub fn save_scan(files: &[FileEntry], state_path: &Path) -> Result<(), std::io::
                 let seconds = duration.as_secs();
                 let nanoseconds = duration.subsec_nanos();
 
-                writeln!(file, "{}|{}|{}|{}|{}", entry.path.display(), entry.size, seconds, nanoseconds, entry.hash)?;
-            },
+                writeln!(
+                    file,
+                    "{}|{}|{}|{}|{}",
+                    entry.path.display(),
+                    entry.size,
+                    seconds,
+                    nanoseconds,
+                    entry.hash
+                )?;
+            }
             Err(err) => {
                 eprintln!("Timestamp error: {err}");
             }
         }
     }
-
 
     Ok(())
 }

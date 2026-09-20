@@ -1,13 +1,15 @@
-use std::{env, eprintln, println};
-use std::path::Path;
 use std::fs::{self};
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::{Duration, UNIX_EPOCH};
+use std::{env, eprintln, println};
 
+mod backup;
 mod scanner;
 mod state;
 
-use scanner::{FileEntry, FileState, FileChange, walk_directory, compare_scans};
+use backup::backup_files;
+use scanner::{FileChange, FileEntry, FileState, compare_scans, walk_directory};
 use state::{load_scan, save_scan};
 
 fn main() {
@@ -20,14 +22,17 @@ fn main() {
 
     if args.len() == 3 {
         dry_run_mode = false;
-    } else if args.len() == 4 && args[3] == "--dry-run"{
+    } else if args.len() == 4 && args[3] == "--dry-run" {
         dry_run_mode = true;
     } else {
         eprintln!("Usage: rustsync <source_directory> <destination_directory> [--dry-run]");
         return;
     }
 
-    println!("Source directory: {}\nBackup destination: {}", args[1], args[2]);  
+    println!(
+        "Source directory: {}\nBackup destination: {}",
+        args[1], args[2]
+    );
 
     let path = Path::new(&args[1]);
 
@@ -57,8 +62,11 @@ fn main() {
     } else {
         match fs::create_dir_all(destination) {
             Ok(()) => {
-                println!("Destination directory successfully created: {}", destination.display());
-            },
+                println!(
+                    "Destination directory successfully created: {}",
+                    destination.display()
+                );
+            }
             Err(err) => {
                 eprintln!("Error: {err}");
                 return;
@@ -67,21 +75,23 @@ fn main() {
     }
 
     match validate_paths(path, destination) {
-        Ok(true) => { println!("Path canonicalization succeeded!")},
+        Ok(true) => {
+            println!("Path canonicalization succeeded!")
+        }
         Ok(false) => {
             eprintln!("Destination cannot be inside source directory");
             return;
-        },
+        }
         Err(err) => {
             eprintln!("Path validation failed: {err}");
             return;
         }
     }
-     // ------------- End Validate arguments -------------
+    // ------------- End Validate arguments -------------
 
     println!("RustSync");
     let previous_scan: Vec<FileEntry> = match load_scan(state_path) {
-        Ok(previous) => { previous },
+        Ok(previous) => previous,
         Err(err) => {
             eprintln!("Error loading previous scan: {err}");
             return;
@@ -90,7 +100,7 @@ fn main() {
 
     let mut current_scan: Vec<FileEntry> = Vec::new();
     match walk_directory(path, path, &previous_scan, &mut current_scan) {
-        Ok(()) => {},
+        Ok(()) => {}
         Err(err) => {
             eprintln!("Scan failed: {err}");
             return;
@@ -100,10 +110,10 @@ fn main() {
 
     let changes = compare_scans(&current_scan, &previous_scan);
     print_changes(&changes);
-    
+
     if !dry_run_mode {
         match backup_files(&changes, path, destination) {
-            Ok(()) => {},
+            Ok(()) => {}
             Err(err) => {
                 eprintln!("Backup failed: {err}");
                 return;
@@ -111,7 +121,7 @@ fn main() {
         }
 
         match save_scan(&current_scan, state_path) {
-            Ok(()) => {},
+            Ok(()) => {}
             Err(err) => {
                 eprintln!("Save failed: {err}");
                 return;
@@ -122,50 +132,21 @@ fn main() {
     }
 }
 
-fn backup_files(changes: &[FileChange], source_root: &Path, backup_root: &Path) -> Result<(), std::io::Error> {
-    for change in changes {
-        let should_backup: bool = match change.state {
-            FileState::Modified => true,
-            FileState::New => true,
-            FileState::Deleted => false,
-            FileState::Unchanged => false,
-        };
-
-        if !should_backup {
-            continue;
-        }
-
-        let source_file = source_root.join(&change.path);
-        let backup_file = backup_root.join(&change.path);
-
-        match backup_file.parent() {
-            Some(path) => {
-                fs::create_dir_all(path)?;
-                let bytes = fs::copy(source_file, backup_file)?; 
-                println!("Copied {} ({} bytes)", change.path.display(), bytes);
-            },
-            None => {}
-        }
-    }
-
-    Ok(())
-}
-
 fn print_changes(changes: &[FileChange]) {
     for change in changes {
         match change.state {
             FileState::Modified => {
                 println!("Modified: {}", change.path.display());
-            },
+            }
             FileState::New => {
                 println!("New: {}", change.path.display());
-            },
+            }
             FileState::Unchanged => {
                 println!("Unchanged: {}", change.path.display());
-            },
+            }
             FileState::Deleted => {
                 println!("Deleted: {}", change.path.display());
-            },
+            }
         }
     }
 }
@@ -178,26 +159,45 @@ fn validate_paths(source: &Path, destination: &Path) -> Result<bool, std::io::Er
 }
 
 #[cfg(test)]
-mod tests{
+mod tests {
     use std::assert_eq;
 
-use super::*;
-
+    use super::*;
 
     #[test]
     fn test_compare_unchanged() {
-        let first = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
-        let second = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
+        let first = FileEntry::new(
+            PathBuf::from("test"),
+            10,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash"),
+        );
+        let second = FileEntry::new(
+            PathBuf::from("test"),
+            10,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash"),
+        );
 
         let result = first.compare(&second);
 
-        assert_eq!(result, FileState::Unchanged); 
+        assert_eq!(result, FileState::Unchanged);
     }
 
     #[test]
     fn test_compare_modified_size_only() {
-        let first = FileEntry::new(PathBuf::from("test"), 20, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
-        let second = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
+        let first = FileEntry::new(
+            PathBuf::from("test"),
+            20,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash"),
+        );
+        let second = FileEntry::new(
+            PathBuf::from("test"),
+            10,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash"),
+        );
 
         let result = first.compare(&second);
 
@@ -206,8 +206,18 @@ use super::*;
 
     #[test]
     fn test_compare_unchanged_with_different_timestamp() {
-        let first = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
-        let second = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(2_000_000), String::from("this_is_a_hash"));
+        let first = FileEntry::new(
+            PathBuf::from("test"),
+            10,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash"),
+        );
+        let second = FileEntry::new(
+            PathBuf::from("test"),
+            10,
+            UNIX_EPOCH + Duration::from_secs(2_000_000),
+            String::from("this_is_a_hash"),
+        );
 
         let result = first.compare(&second);
 
@@ -216,8 +226,18 @@ use super::*;
 
     #[test]
     fn test_compare_modified_hashed() {
-        let first = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
-        let second = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_different_hash"));
+        let first = FileEntry::new(
+            PathBuf::from("test"),
+            10,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash"),
+        );
+        let second = FileEntry::new(
+            PathBuf::from("test"),
+            10,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_different_hash"),
+        );
 
         let result = first.compare(&second);
 
@@ -226,13 +246,19 @@ use super::*;
 
     #[test]
     fn test_compare_scans_file_unchanged() {
-        let previous = vec![
-            FileEntry::new(PathBuf::from("test1"), 20, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
-        ];
+        let previous = vec![FileEntry::new(
+            PathBuf::from("test1"),
+            20,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash_1"),
+        )];
 
-        let current = vec![
-            FileEntry::new(PathBuf::from("test1"), 20, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
-        ];
+        let current = vec![FileEntry::new(
+            PathBuf::from("test1"),
+            20,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash_1"),
+        )];
 
         let changes: Vec<FileChange> = compare_scans(&current, &previous);
 
@@ -245,9 +271,12 @@ use super::*;
     fn test_compare_scans_file_new() {
         let previous = vec![];
 
-        let current = vec![
-            FileEntry::new(PathBuf::from("test1"), 20, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
-        ];
+        let current = vec![FileEntry::new(
+            PathBuf::from("test1"),
+            20,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash_1"),
+        )];
 
         let changes: Vec<FileChange> = compare_scans(&current, &previous);
 
@@ -258,13 +287,19 @@ use super::*;
 
     #[test]
     fn test_compare_scans_file_modified_hashed() {
-        let previous = vec![
-            FileEntry::new(PathBuf::from("test1"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
-        ];
+        let previous = vec![FileEntry::new(
+            PathBuf::from("test1"),
+            10,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash_1"),
+        )];
 
-        let current = vec![
-            FileEntry::new(PathBuf::from("test1"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_2")),
-        ];
+        let current = vec![FileEntry::new(
+            PathBuf::from("test1"),
+            10,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash_2"),
+        )];
 
         let changes: Vec<FileChange> = compare_scans(&current, &previous);
 
@@ -275,13 +310,19 @@ use super::*;
 
     #[test]
     fn test_compare_scans_file_modified_size() {
-        let previous = vec![
-            FileEntry::new(PathBuf::from("test1"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
-        ];
+        let previous = vec![FileEntry::new(
+            PathBuf::from("test1"),
+            10,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash_1"),
+        )];
 
-        let current = vec![
-            FileEntry::new(PathBuf::from("test1"), 20, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
-        ];
+        let current = vec![FileEntry::new(
+            PathBuf::from("test1"),
+            20,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash_1"),
+        )];
 
         let changes: Vec<FileChange> = compare_scans(&current, &previous);
 
@@ -292,9 +333,12 @@ use super::*;
 
     #[test]
     fn test_compare_scans_file_deleted() {
-        let previous = vec![
-            FileEntry::new(PathBuf::from("test1"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash_1")),
-        ];
+        let previous = vec![FileEntry::new(
+            PathBuf::from("test1"),
+            10,
+            UNIX_EPOCH + Duration::from_secs(1_000_000),
+            String::from("this_is_a_hash_1"),
+        )];
 
         let current = vec![];
 
