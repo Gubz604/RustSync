@@ -24,20 +24,22 @@ struct FileEntry {
     path: PathBuf,
     size: u64,
     modified: SystemTime,
+    hash: String,
 }
 
 impl FileEntry {
-    fn new(path: PathBuf, size: u64, modified: SystemTime) -> Self {
+    fn new(path: PathBuf, size: u64, modified: SystemTime, hash: String) -> Self {
         Self {
             path,
             size,
             modified,
+            hash,
         }
     }
 
     
     fn compare(&self, file: &FileEntry) -> FileState {
-        if self.path == file.path && self.size == file.size && self.modified == file.modified {
+        if self.path == file.path && self.size == file.size && self.hash == file.hash {
             return FileState::Unchanged
         }
 
@@ -165,7 +167,7 @@ fn walk_directory(current_path: &Path, source_root: &Path, output: &mut Vec<File
             let meta_modified = metadata.modified()?;
             match entry_path.strip_prefix(source_root) {
                 Ok(relative_path) => {
-                    output.push(FileEntry::new(relative_path.to_path_buf(), metadata.len(), meta_modified));
+                    output.push(FileEntry::new(relative_path.to_path_buf(), metadata.len(), meta_modified, hash_file(&entry_path)?));
                 },
                 Err(err) => {
                     eprintln!("Strip Prefix Error: {err}");
@@ -229,7 +231,7 @@ fn save_scan(files: &[FileEntry], state_path: &Path) -> Result<(), std::io::Erro
                 let seconds = duration.as_secs();
                 let nanoseconds = duration.subsec_nanos();
 
-                writeln!(file, "{}|{}|{}|{}", entry.path.display(), entry.size, seconds, nanoseconds)?;
+                writeln!(file, "{}|{}|{}|{}|{}", entry.path.display(), entry.size, seconds, nanoseconds, entry.hash)?;
             },
             Err(err) => {
                 eprintln!("Timestamp error: {err}");
@@ -252,11 +254,12 @@ fn load_scan(state_path: &Path) -> Result<Vec<FileEntry>, std::io::Error> {
 
     for line in contents.lines() {
         let parts: Vec<&str> = line.split('|').collect();
-        if parts.len() != 4 {
+        if parts.len() != 5 {
             continue;
         }
 
         let path: PathBuf = PathBuf::from(parts[0]);
+        let hash: String = parts[4].to_string();
 
         let Ok(size) = parts[1].parse::<u64>() else {
             eprintln!("Error retrieving file size during loading: {line}");
@@ -275,7 +278,7 @@ fn load_scan(state_path: &Path) -> Result<Vec<FileEntry>, std::io::Error> {
 
         let system_timestamp = UNIX_EPOCH + Duration::new(timestamp_sec, timestamp_nano);
 
-        files.push(FileEntry::new(path, size, system_timestamp));
+        files.push(FileEntry::new(path, size, system_timestamp, hash));
     }
 
     Ok(files)
