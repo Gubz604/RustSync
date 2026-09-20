@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use sha2::{Digest, Sha256};
 use std::fmt::Write as FmtWrite;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum FileState {
     New,
     Modified,
@@ -396,4 +396,50 @@ fn hash_file(path: &Path) -> Result<String, std::io::Error> {
     }
 
     Ok(hash_string)
+}
+
+#[cfg(test)]
+mod tests{
+    use super::*;
+
+
+    #[test]
+    fn test_compare_unchanged() {
+        let first = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
+        let second = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
+
+        let result = first.compare(&second);
+
+        assert_eq!(result, FileState::Unchanged); 
+    }
+
+    #[test]
+    fn test_compare_modified_size_only() {
+        let first = FileEntry::new(PathBuf::from("test"), 20, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
+        let second = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
+
+        let result = first.compare(&second);
+
+        assert_eq!(result, FileState::Modified);
+    }
+
+    #[test]
+    fn test_compare_unchanged_with_different_timestamp() {
+        let first = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
+        let second = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(2_000_000), String::from("this_is_a_hash"));
+
+        let result = first.compare(&second);
+
+        assert_eq!(result, FileState::Unchanged);
+    }
+
+    #[test]
+    fn test_compare_modified_hashed() {
+        let first = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_hash"));
+        let second = FileEntry::new(PathBuf::from("test"), 10, UNIX_EPOCH + Duration::from_secs(1_000_000), String::from("this_is_a_different_hash"));
+
+        let result = first.compare(&second);
+
+        assert_eq!(result, FileState::Modified);
+    }
 }
