@@ -121,7 +121,7 @@ fn main() {
     };
 
     let mut current_scan: Vec<FileEntry> = Vec::new();
-    match walk_directory(path, path, &mut current_scan) {
+    match walk_directory(path, path, &previous_scan, &mut current_scan) {
         Ok(()) => {},
         Err(err) => {
             eprintln!("Scan failed: {err}");
@@ -150,7 +150,7 @@ fn main() {
     }
 }
 
-fn walk_directory(current_path: &Path, source_root: &Path, output: &mut Vec<FileEntry>) -> Result<(), std::io::Error> {
+fn walk_directory(current_path: &Path, source_root: &Path, previous_files: &[FileEntry], output: &mut Vec<FileEntry>) -> Result<(), std::io::Error> {
     let content = fs::read_dir(current_path)?;
 
     for entry in content {
@@ -165,16 +165,28 @@ fn walk_directory(current_path: &Path, source_root: &Path, output: &mut Vec<File
         if file_type.is_file() {
             let metadata = fs::metadata(&entry_path)?;
             let meta_modified = metadata.modified()?;
+            let meta_size = metadata.len();
             match entry_path.strip_prefix(source_root) {
                 Ok(relative_path) => {
-                    output.push(FileEntry::new(relative_path.to_path_buf(), metadata.len(), meta_modified, hash_file(&entry_path)?));
+                    match previous_files.iter().find(|file| (**file).path == relative_path) {
+                        Some(previous_file) => {
+                            if (previous_file.size == meta_size) && (previous_file.modified == meta_modified) {
+                                output.push(FileEntry::new(relative_path.to_path_buf(), meta_size, meta_modified, previous_file.hash.clone()));
+                            } else {
+                                output.push(FileEntry::new(relative_path.to_path_buf(), meta_size, meta_modified, hash_file(&entry_path)?));
+                            }
+                        },
+                        None => {
+                            output.push(FileEntry::new(relative_path.to_path_buf(), meta_size, meta_modified, hash_file(&entry_path)?));
+                        }
+                    }
                 },
                 Err(err) => {
                     eprintln!("Strip Prefix Error: {err}");
                 }
             }
         } else if file_type.is_dir() {
-            walk_directory(&entry_path, source_root, output)?;
+            walk_directory(&entry_path, source_root, previous_files, output)?;
         } else {
             println!("{} is not supported", entry_path.display());
             continue;
