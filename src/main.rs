@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::fs::{self, File};
 use std::time::{SystemTime, Duration, UNIX_EPOCH};
 use std::io::Write;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 enum FileState {
@@ -181,9 +182,20 @@ fn walk_directory(current_path: &Path, source_root: &Path, output: &mut Vec<File
 
 fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) -> Vec<FileChange> {
     let mut changes: Vec<FileChange> = Vec::new();
+    let mut previous_lookup: HashMap<&Path, &FileEntry> = HashMap::new();
+    let mut current_lookup: HashMap<&Path, &FileEntry> = HashMap::new();
+
+    for entry in previous_files {
+        previous_lookup.insert(entry.path.as_path(), entry);
+    }
 
     for entry in current_files {
-        match previous_files.iter().find(|file| (**file).path == entry.path) {
+        current_lookup.insert(entry.path.as_path(), entry);
+    }
+
+
+    for entry in current_files {
+        match previous_lookup.get(entry.path.as_path()) {
             Some(file) => {
                 let state = entry.compare(file);
                 changes.push(FileChange { path: entry.path.clone(), state });
@@ -195,7 +207,7 @@ fn compare_scans(current_files: &[FileEntry], previous_files: &[FileEntry]) -> V
     }
 
     for entry in previous_files {
-        match current_files.iter().find(|file| (**file).path == entry.path) {
+        match current_lookup.get(entry.path.as_path()) {
             Some(_) => {},
             None => {
                 changes.push(FileChange { path: entry.path.clone(), state: FileState::Deleted });
