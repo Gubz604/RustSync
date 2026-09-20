@@ -53,13 +53,18 @@ fn main() {
     // ------------- Collect and Validate arguments -------------
 
     let args: Vec<String> = env::args().collect();
+    let dry_run_mode;
 
     if args.len() == 3 {
-        println!("Source directory: {}\nBackup destination: {}", args[1], args[2]);  
+        dry_run_mode = false;
+    } else if args.len() == 4 && args[3] == "--dry-run"{
+        dry_run_mode = true;
     } else {
-        eprintln!("Usage: rustsync <source_directory> <destination_directory>");
+        eprintln!("Usage: rustsync <source_directory> <destination_directory> [--dry-run]");
         return;
     }
+
+    println!("Source directory: {}\nBackup destination: {}", args[1], args[2]);  
 
     let path = Path::new(&args[1]);
 
@@ -132,21 +137,25 @@ fn main() {
 
     let changes = compare_scans(&current_scan, &previous_scan);
     print_changes(&changes);
-
-    match backup_files(&changes, path, destination) {
-        Ok(()) => {},
-        Err(err) => {
-            eprintln!("Backup failed: {err}");
-            return;
+    
+    if !dry_run_mode {
+        match backup_files(&changes, path, destination) {
+            Ok(()) => {},
+            Err(err) => {
+                eprintln!("Backup failed: {err}");
+                return;
+            }
         }
-    }
 
-    match save_scan(&current_scan, state_path) {
-        Ok(()) => {},
-        Err(err) => {
-            eprintln!("Save failed: {err}");
-            return;
+        match save_scan(&current_scan, state_path) {
+            Ok(()) => {},
+            Err(err) => {
+                eprintln!("Save failed: {err}");
+                return;
+            }
         }
+    } else {
+        println!("Dry run: no files were copied and state was not updated");
     }
 }
 
