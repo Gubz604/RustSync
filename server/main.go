@@ -6,7 +6,13 @@ import (
 )
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "OK")
+	if !(r.Method == http.MethodGet) {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	} else {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "OK")
+	}
 }
 
 func main() {
