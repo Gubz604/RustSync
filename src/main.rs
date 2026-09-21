@@ -12,7 +12,7 @@ mod network;
 use backup::backup_files;
 use scanner::{FileChange, FileEntry, FileState, compare_scans, walk_directory};
 use state::{load_scan, save_scan};
-use network::check_server;
+use network::{check_server, send_backup_data};
 
 fn main() {
     let state_path = Path::new("rustsync_state.txt");
@@ -134,6 +134,15 @@ fn main() {
     }
 
     check_server();
+    if let Some(file) = current_scan.first() {
+        let success = send_backup_data(file);
+
+        if success {
+            println!("Backup metadata sent successfully");
+        } else {
+            
+        }
+    }
 }
 
 fn print_changes(changes: &[FileChange]) {
