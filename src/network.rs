@@ -1,5 +1,6 @@
-use std::{eprintln, println};
-use serde::Serialize;
+use std::{eprintln, fs, println};
+use serde::{Serialize, de::Unexpected::Bytes};
+use std::path::Path;
 
 use crate::scanner::FileEntry;
 
@@ -60,7 +61,7 @@ pub fn  send_backup_data(file_entry: &FileEntry) -> bool {
             match text {
                 Ok(body) => {
                     if body == "OK" && response_success {
-                        println!("Connection to server successful");
+                        println!("Backup data sent successful");
                         true
                     } else {
                         false
@@ -74,6 +75,49 @@ pub fn  send_backup_data(file_entry: &FileEntry) -> bool {
         },
         Err(err) => {
             eprintln!("Failed to check server: {err}");
+            false
+        }
+    }
+}
+
+pub fn send_file(file_path: &Path) -> bool {
+    let client = reqwest::blocking::Client::new();
+
+    let bytes = fs::read(file_path);
+
+    match bytes {
+        Ok(bytes) => {
+            match client
+                .post("http://localhost:8080/upload")
+                .body(bytes)
+                .send()
+            {
+                Ok(response) => {
+                    let response_success = response.status().is_success();
+                    let text = response.text();
+                    match text {
+                        Ok(body) => {
+                            if body == "OK" && response_success {
+                                println!("File bytes successfully sent");
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                        Err(err) => {
+                            eprintln!("Error with connecting to server: {err}");
+                            false
+                        }
+                    }
+                },
+                Err(err) => {
+                    eprintln!("Failed to send bytes: {err}");
+                    false
+                }
+            }
+        },
+        Err(err) => {
+            eprintln!("Failed to send bytes: {err}");
             false
         }
     }
