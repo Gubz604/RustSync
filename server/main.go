@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"io"
+	"strconv"
+	"crypto/sha256"
 )
 
 type Backup struct {
@@ -50,9 +52,35 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return 
 	}
 
+	path := r.Header.Get("X-File-Path")
+	size := r.Header.Get("X-File-Size")
+	hash := r.Header.Get("X-File-Hash")
+
+	if path == "" || size == "" || hash == "" {
+		http.Error(w, "Metadata not correctly received", http.StatusBadRequest)
+		return
+	}
+
+	parsedSize, sizeErr := strconv.ParseUint(size, 10, 64)
+	if sizeErr != nil {
+		http.Error(w, "File Size received not an integer value", http.StatusBadRequest)
+		return
+	}
+
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w,"Error reading bytes from upload", http.StatusInternalServerError)
+		return
+	}
+
+	if parsedSize != uint64(len(data)) {
+		http.Error(w, "File size does not match size in header", http.StatusBadRequest)
+		return
+	}
+
+	hashString := fmt.Sprintf("%x", sha256.Sum256(data))
+	if hashString != hash {
+		http.Error(w, "Hash from metadata does not match file hash", http.StatusBadRequest)
 		return
 	}
 
