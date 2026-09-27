@@ -137,19 +137,13 @@ fn main() {
 
     check_server();
     if let Some(file) = current_scan.first() {
-        let success_backup = send_backup_data(file);
 
-        let source_file = path.join(&file.path);
-        let success_send = send_file(&source_file);
+        let success_send = send_file(file, path);
 
-        if success_backup {
-            println!("Backup sent successfully");
-        }
         if success_send {
             println!("File sent successfully");
-        }
-        if !success_backup && !!success_send {
-            println!("Error in sending data...");
+        } else {
+            println!("Error sending file");
         }
     }
 }

@@ -57,6 +57,9 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Printf("Received %d bytes\n", len(data))
+	fmt.Printf("File Path: %s\n", r.Header.Get("X-File-Path"))
+	fmt.Printf("File Size: %s bytes\n", r.Header.Get("X-File-Size"))
+	fmt.Printf("File Hash: %s\n", r.Header.Get("X-File-Hash"))
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "OK")

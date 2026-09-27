@@ -80,15 +80,23 @@ pub fn  send_backup_data(file_entry: &FileEntry) -> bool {
     }
 }
 
-pub fn send_file(file_path: &Path) -> bool {
+pub fn send_file(file_entry: &FileEntry, source_path: &Path) -> bool {
     let client = reqwest::blocking::Client::new();
 
-    let bytes = fs::read(file_path);
+    let bytes = fs::read(source_path.join(&file_entry.path));
+
+    let path = file_entry.path.to_string_lossy().to_string();
+    let size = file_entry.size.to_string();
+    let hash = &file_entry.hash;
 
     match bytes {
         Ok(bytes) => {
             match client
                 .post("http://localhost:8080/upload")
+                .header("X-File-Path", path)
+                .header("X-File-Size", size)
+                .header("X-File-Hash", hash)
+                .header("Content-Type", "application/octet-stream")
                 .body(bytes)
                 .send()
             {
@@ -111,7 +119,7 @@ pub fn send_file(file_path: &Path) -> bool {
                     }
                 },
                 Err(err) => {
-                    eprintln!("Failed to send bytes: {err}");
+                    eprintln!("Failed to read file: {err}");
                     false
                 }
             }
