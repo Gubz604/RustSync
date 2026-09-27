@@ -12,7 +12,7 @@ mod network;
 use backup::backup_files;
 use scanner::{FileChange, FileEntry, FileState, compare_scans, walk_directory};
 use state::{load_scan, save_scan};
-use network::{check_server, send_backup_data};
+use network::{check_server, send_backup_data, upload_changes};
 
 use crate::network::send_file;
 
@@ -115,36 +115,31 @@ fn main() {
     let changes = compare_scans(&current_scan, &previous_scan);
     print_changes(&changes);
 
+    check_server();
+
     if !dry_run_mode {
         match backup_files(&changes, path, destination) {
-            Ok(()) => {}
+            Ok(()) => {
+                if !upload_changes(&changes, &current_scan, path) {
+                    eprintln!("Remote backup failed");
+                    return;
+                }
+
+                match save_scan(&current_scan, state_path) {
+                    Ok(()) => {}
+                    Err(err) => {
+                        eprintln!("Save failed: {err}");
+                        return;
+                    }
+                }
+            }
             Err(err) => {
                 eprintln!("Backup failed: {err}");
                 return;
             }
         }
-
-        match save_scan(&current_scan, state_path) {
-            Ok(()) => {}
-            Err(err) => {
-                eprintln!("Save failed: {err}");
-                return;
-            }
-        }
     } else {
         println!("Dry run: no files were copied and state was not updated");
-    }
-
-    check_server();
-    if let Some(file) = current_scan.first() {
-
-        let success_send = send_file(file, path);
-
-        if success_send {
-            println!("File sent successfully");
-        } else {
-            println!("Error sending file");
-        }
     }
 }
 

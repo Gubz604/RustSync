@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const backupRoot = "Backups"
+const backupRoot = "../../../Backups-Go"
 
 type Backup struct {
 	Path string `json:"path"`
