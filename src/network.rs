@@ -33,7 +33,7 @@ pub fn check_server() -> bool {
     }
 }
 
-pub fn send_file(file_entry: &FileEntry, source_path: &Path) -> bool {
+pub fn send_file(file_entry: &FileEntry, source_path: &Path) -> Result<(), String> {
     let client = reqwest::blocking::Client::new();
 
     let bytes = fs::read(source_path.join(&file_entry.path));
@@ -46,7 +46,7 @@ pub fn send_file(file_entry: &FileEntry, source_path: &Path) -> bool {
         Ok(bytes) => {
             match client
                 .post("http://localhost:8080/upload")
-                .header("X-File-Path", path)
+                .header("X-File-Path", &path)
                 .header("X-File-Size", size)
                 .header("X-File-Hash", hash)
                 .header("Content-Type", "application/octet-stream")
@@ -55,36 +55,34 @@ pub fn send_file(file_entry: &FileEntry, source_path: &Path) -> bool {
             {
                 Ok(response) => {
                     let response_success = response.status().is_success();
+                    let status = response.status();
                     let text = response.text();
                     match text {
                         Ok(body) => {
                             if body == "OK" && response_success {
-                                println!("File bytes successfully sent");
-                                true
+                                println!("File bytes successfully sent for {}", path);
+                                Ok(())
                             } else {
-                                false
+                                Err(format!("Server rejected {}: {} - {}", path, status, body.trim()))
                             }
                         },
                         Err(err) => {
-                            eprintln!("Error with connecting to server: {err}");
-                            false
+                            Err(format!("Failed to get text from {}: {err}", path))
                         }
                     }
                 },
                 Err(err) => {
-                    eprintln!("Failed to read file: {err}");
-                    false
+                    Err(format!("Failed to send {}: {err}", path))
                 }
             }
         },
         Err(err) => {
-            eprintln!("Failed to send bytes: {err}");
-            false
+            Err(format!("Failed to read {}: {err}", path))
         }
     }
 }
 
-pub fn upload_changes(changes: &[FileChange], current_files: &[FileEntry], source_root: &Path) -> bool {
+pub fn upload_changes(changes: &[FileChange], current_files: &[FileEntry], source_root: &Path) -> Result<(), String> {
     for change in changes {
 
         match change.state {
@@ -92,14 +90,10 @@ pub fn upload_changes(changes: &[FileChange], current_files: &[FileEntry], sourc
                 let file = current_files.iter().find(|file_entry| (**file_entry).path == change.path);
                 match file {
                     Some(entry) => { 
-                        if !send_file(entry, source_root) {
-                            eprintln!("Failed to upload {}", change.path.display());
-                            return false;
-                        }
+                        send_file(entry, source_root)?; 
                     } ,
                     None => {
-                        eprintln!("Could not find file {}", change.path.display());
-                        return false;
+                        return Err(format!("Could not find file {}", change.path.display()));
                     }
                 }
             },
@@ -108,5 +102,5 @@ pub fn upload_changes(changes: &[FileChange], current_files: &[FileEntry], sourc
             }
         }
     }
-    true
+    Ok(())
 }

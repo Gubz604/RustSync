@@ -116,9 +116,12 @@ fn main() {
     if !dry_run_mode {
         match backup_files(&changes, path, destination) {
             Ok(()) => {
-                if !upload_changes(&changes, &current_scan, path) {
-                    eprintln!("Remote backup failed");
-                    return;
+                match upload_changes(&changes, &current_scan, path) {
+                    Ok(()) => {},
+                    Err(err) => {
+                        eprintln!("Remote backup failed: {err}");
+                        return;
+                    }
                 }
 
                 match save_scan(&current_scan, state_path) {
