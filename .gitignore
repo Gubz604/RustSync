@@ -3,3 +3,5 @@
 rustsync_state.txt
 
 server/rustsync-server.exe
+
+server/Backups/

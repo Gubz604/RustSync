@@ -85,7 +85,8 @@ pub fn send_file(file_entry: &FileEntry, source_path: &Path) -> bool {
 
     let bytes = fs::read(source_path.join(&file_entry.path));
 
-    let path = file_entry.path.to_string_lossy().to_string();
+    // let path = file_entry.path.to_string_lossy().to_string();
+    let path = String::from(r"src\main.rs");
     let size = file_entry.size.to_string();
     let hash = &file_entry.hash;
 

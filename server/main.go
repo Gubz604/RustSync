@@ -1,15 +1,18 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"io"
-	"strconv"
-	"crypto/sha256"
+	"net/http"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
+
+const backupRoot = "Backups"
 
 type Backup struct {
 	Path string `json:"path"`
@@ -21,10 +24,10 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
-	} else {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "OK")
 	}
+	
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "OK")
 }
 
 func backupHandler(w http.ResponseWriter, r *http.Request) {
@@ -71,9 +74,8 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("File Size received not an integer value")
 		return
 	}
-	
-	cleanedPath := filepath.Clean(path)
 
+	cleanedPath := filepath.Clean(path)
 	if filepath.IsAbs(cleanedPath) {
 		http.Error(w, "Filepath received is an absolute path", http.StatusBadRequest)
 		fmt.Println("Filepath received is an absolute path")
@@ -104,6 +106,48 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	if hashString != hash {
 		http.Error(w, "Hash from metadata does not match file hash", http.StatusBadRequest)
 		fmt.Println("Hash from metadata does not match file hash")
+		return
+	}
+
+	destination := filepath.Join(backupRoot, cleanedPath)
+
+	absoluteRoot, absRootErr := filepath.Abs(backupRoot)
+	if absRootErr != nil {
+		http.Error(w, "Error producing the absolute root", http.StatusInternalServerError)
+		fmt.Println("Error producing the absolute root")
+		return
+	}
+	absoluteDestination, absDestinationErr := filepath.Abs(destination)
+	if absDestinationErr != nil {
+		http.Error(w, "Error producing the absolute destination", http.StatusInternalServerError)
+		fmt.Println("Error producing the absolute destination")
+		return
+	}
+	relativeDestination, relativeDesErr := filepath.Rel(absoluteRoot, absoluteDestination)
+	if relativeDesErr != nil {
+		http.Error(w, "Error in creating a relative destination", http.StatusInternalServerError)
+		fmt.Println("Error in creating a relative destination")
+		return
+	}
+	
+	if strings.HasPrefix(relativeDestination, prefix) || relativeDestination == ".." {
+		http.Error(w, "Destination is outside of root", http.StatusBadRequest)
+		fmt.Println("Destination is outside of root")
+		return
+	}
+
+	parent := filepath.Dir(destination)
+	mkdirErr := os.MkdirAll(parent, 0755)
+	if mkdirErr != nil {
+		http.Error(w, "Destination directory failed to be created", http.StatusInternalServerError)
+		fmt.Println("Destination directory failed to be created")
+		return
+	}
+
+	writeFileErr := os.WriteFile(destination, data, 0644)
+	if writeFileErr != nil {
+		http.Error(w, "File failed to be written", http.StatusInternalServerError)
+		fmt.Println("File failed to be written")
 		return
 	}
 
