@@ -59,7 +59,7 @@ pub fn send_file(file_entry: &FileEntry, source_path: &Path) -> Result<(), Strin
                     let text = response.text();
                     match text {
                         Ok(body) => {
-                            if body == "OK" && response_success {
+                            if response_success {
                                 println!("File bytes successfully sent for {}", path);
                                 Ok(())
                             } else {
