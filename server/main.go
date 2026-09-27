@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,39 +13,12 @@ import (
 
 const backupRoot = "../../../Backups-Go"
 
-type Backup struct {
-	Path string `json:"path"`
-	Size uint64 `json:"size"`
-	Hash string `json:"hash"`
-}
-
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "OK")
-}
-
-func backupHandler(w http.ResponseWriter, r *http.Request) {
-	var backup Backup
-
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	} 
-
-	decoder := json.NewDecoder(r.Body)
-
-	if err := decoder.Decode(&backup); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	fmt.Println(backup)
-
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "OK")
 }
@@ -164,8 +136,6 @@ func main() {
 	fmt.Println("RustSync Backup Server")
 
 	http.HandleFunc("/health", healthHandler)
-
-	http.HandleFunc("/backup", backupHandler)
 
 	http.HandleFunc("/upload", uploadHandler)
 

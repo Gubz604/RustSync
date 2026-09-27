@@ -1,7 +1,5 @@
 use std::fs::{self};
 use std::path::Path;
-use std::path::PathBuf;
-use std::time::{Duration, UNIX_EPOCH};
 use std::{env, eprintln, println};
 
 mod backup;
@@ -12,9 +10,7 @@ mod network;
 use backup::backup_files;
 use scanner::{FileChange, FileEntry, FileState, compare_scans, walk_directory};
 use state::{load_scan, save_scan};
-use network::{check_server, send_backup_data, upload_changes};
-
-use crate::network::send_file;
+use network::{check_server, upload_changes};
 
 fn main() {
     let state_path = Path::new("rustsync_state.txt");
@@ -171,6 +167,8 @@ fn validate_paths(source: &Path, destination: &Path) -> Result<bool, std::io::Er
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+    use std::time::{Duration, UNIX_EPOCH};
     use std::assert_eq;
 
     use super::*;
