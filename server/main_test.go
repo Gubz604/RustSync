@@ -16,7 +16,9 @@ func TestUploadRejectsWrongMethod(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/path/example", nil)
 	recorder := httptest.NewRecorder()
 
-	uploadHandler(recorder, req)
+	tempDir := t.TempDir()
+	handler := makeUploadHandler(tempDir)
+	handler(recorder, req)
 
 	expected := http.StatusMethodNotAllowed
 
@@ -34,7 +36,9 @@ func TestUploadRejectsMissingMetadata(t *testing.T) {
 	req.Header.Set("X-File-Path", "")
 	recorder := httptest.NewRecorder()
 
-	uploadHandler(recorder, req)
+	tempDir := t.TempDir()
+	handler := makeUploadHandler(tempDir)
+	handler(recorder, req)
 
 	expected := http.StatusBadRequest
 
@@ -54,7 +58,9 @@ func TestUploadRejectsPathTraversal(t *testing.T) {
 	req.Header.Set("X-File-Hash", "This_is_a_hash")
 	recorder := httptest.NewRecorder()
 
-	uploadHandler(recorder, req)
+	tempDir := t.TempDir()
+	handler := makeUploadHandler(tempDir)
+	handler(recorder, req)
 
 	expected := http.StatusBadRequest
 
@@ -74,7 +80,9 @@ func TestUploadRejectsAbsolutePath(t *testing.T) {
 	req.Header.Set("X-File-Hash", "This_is_a_hash")
 	recorder := httptest.NewRecorder()
 
-	uploadHandler(recorder, req)
+	tempDir := t.TempDir()
+	handler := makeUploadHandler(tempDir)
+	handler(recorder, req)
 
 	expected := http.StatusBadRequest
 
@@ -95,7 +103,9 @@ func TestUploadRejectsIncorrectSize(t *testing.T) {
 	req.Header.Set("X-File-Hash", "placeholder")
 	recorder := httptest.NewRecorder()
 
-	uploadHandler(recorder, req)
+	tempDir := t.TempDir()
+	handler := makeUploadHandler(tempDir)
+	handler(recorder, req)
 
 	expected := http.StatusBadRequest
 
@@ -116,7 +126,9 @@ func TestUploadRejectsIncorrectHash(t *testing.T) {
 	req.Header.Set("X-File-Hash", "definitelynotthecorrecthash")
 	recorder := httptest.NewRecorder()
 
-	uploadHandler(recorder, req)
+	tempDir := t.TempDir()
+	handler := makeUploadHandler(tempDir)
+	handler(recorder, req)
 
 	expected := http.StatusBadRequest
 
@@ -131,13 +143,6 @@ func TestUploadRejectsIncorrectHash(t *testing.T) {
 
 func TestUploadSucceeds(t *testing.T) {
 
-	originalRoot := backupRoot
-	backupRoot = t.TempDir()
-
-	defer func() {
-		backupRoot = originalRoot
-	}()
-
 	data := []byte("hello")
 	sum := sha256.Sum256(data)
 	hash := fmt.Sprintf("%x", sum)
@@ -148,14 +153,16 @@ func TestUploadSucceeds(t *testing.T) {
 	req.Header.Set("X-File-Hash", hash)
 	recorder := httptest.NewRecorder()
 
-	uploadHandler(recorder, req)
+	tempDir := t.TempDir()
+	handler := makeUploadHandler(tempDir)
+	handler(recorder, req)
 
 	expected := http.StatusOK
 	if recorder.Code != expected {
 		t.Errorf("expected status %d, got %d", expected, recorder.Code)
 	}
 
-	destination := filepath.Join(backupRoot, "nested", "example.txt")
+	destination := filepath.Join(tempDir, "nested", "example.txt")
 
 	storedData, err := os.ReadFile(destination)
 	if err != nil {
