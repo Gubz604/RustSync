@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const backupRoot = "../../../Backups-Go"
+var backupRoot = "../../../Backups-Go"
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
