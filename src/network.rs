@@ -1,40 +1,40 @@
-use std::{eprintln, fs, println};
+use std::{fs, println};
 use std::path::Path;
 
 use crate::scanner::{FileEntry, FileChange, FileState};
 
 
-pub fn check_server() -> bool {
-    let result = reqwest::blocking::get("http://localhost:8080/health");
+pub fn check_server(server_address: &str) -> Result<(), String> {
+    let health_url: String = format!("{}/health", server_address);
+    let result = reqwest::blocking::get(health_url);
 
     match result {
         Ok(response) => {
-            let response_success = response.status().is_success();
+            let status = response.status();
+            let response_success = status.is_success();
             let text = response.text();
             match text {
                 Ok(body) => {
-                    if body == "OK" && response_success {
-                        println!("Connection to server successful");
-                        true
+                    if response_success {
+                        Ok(())
                     } else {
-                        false
+                        return Err(format!("Error connecting with server: {}", body));
                     }
                 },
                 Err(err) => {
-                    eprintln!("Error with connecting to server: {err}");
-                    false
+                    return Err(format!("Error connecting with server: {}", err));
                 }
             }
         },
         Err(err) => {
-            eprintln!("Failed to check server: {err}");
-            false
+            return Err(format!("Error connecting with server: {}", err));
         }
     }
 }
 
-pub fn send_file(file_entry: &FileEntry, source_path: &Path) -> Result<(), String> {
+pub fn send_file(file_entry: &FileEntry, source_path: &Path, server_address: &str) -> Result<(), String> {
     let client = reqwest::blocking::Client::new();
+    let upload_url: String = format!("{}/upload", server_address);
 
     let bytes = fs::read(source_path.join(&file_entry.path));
 
@@ -45,7 +45,7 @@ pub fn send_file(file_entry: &FileEntry, source_path: &Path) -> Result<(), Strin
     match bytes {
         Ok(bytes) => {
             match client
-                .post("http://localhost:8080/upload")
+                .post(upload_url)
                 .header("X-File-Path", &path)
                 .header("X-File-Size", size)
                 .header("X-File-Hash", hash)
@@ -82,7 +82,7 @@ pub fn send_file(file_entry: &FileEntry, source_path: &Path) -> Result<(), Strin
     }
 }
 
-pub fn upload_changes(changes: &[FileChange], current_files: &[FileEntry], source_root: &Path) -> Result<(), String> {
+pub fn upload_changes(changes: &[FileChange], current_files: &[FileEntry], source_root: &Path, server_address: &str) -> Result<(), String> {
     for change in changes {
 
         match change.state {
@@ -90,7 +90,7 @@ pub fn upload_changes(changes: &[FileChange], current_files: &[FileEntry], sourc
                 let file = current_files.iter().find(|file_entry| (**file_entry).path == change.path);
                 match file {
                     Some(entry) => { 
-                        send_file(entry, source_root)?; 
+                        send_file(entry, source_root, server_address)?; 
                     } ,
                     None => {
                         return Err(format!("Could not find file {}", change.path.display()));

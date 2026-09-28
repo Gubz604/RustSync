@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const backupRoot = "../../../Backups-Go"
+// const backupRoot = "../../../Backups-Go"
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -137,9 +137,29 @@ func makeUploadHandler(backupRoot string) http.HandlerFunc {
 func main() {
 	fmt.Println("RustSync Backup Server")
 
+	if len(os.Args) != 2 {
+		fmt.Println("Usage <Backup Destination Path>")
+		return
+	}
+
+	backupRoot := os.Args[1]
+	cleanedBackupRoot := filepath.Clean(backupRoot)
+	backupAbs, backupAbsErr := filepath.Abs(cleanedBackupRoot)
+	if backupAbsErr != nil {
+		fmt.Printf("Failed to create the backup root as an Absolute Path %v\n", backupAbsErr)
+		return
+	}
+	mkdirErr := os.MkdirAll(backupAbs, 0755)
+	if mkdirErr != nil {
+		fmt.Printf("Backup directory failed to be created %v\n", mkdirErr)
+		return
+	}
+
+	fmt.Printf("---- Backup Directory: %s ----\n", backupAbs)
+
 	http.HandleFunc("/health", healthHandler)
 
-	http.HandleFunc("/upload", makeUploadHandler(backupRoot))
+	http.HandleFunc("/upload", makeUploadHandler(backupAbs))
 
 	fmt.Println("Listening on :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {

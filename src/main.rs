@@ -20,18 +20,18 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let dry_run_mode;
 
-    if args.len() == 3 {
+    if args.len() == 4 {
         dry_run_mode = false;
-    } else if args.len() == 4 && args[3] == "--dry-run" {
+    } else if args.len() == 5 && args[4] == "--dry-run" {
         dry_run_mode = true;
     } else {
-        eprintln!("Usage: rustsync <source_directory> <destination_directory> [--dry-run]");
+        eprintln!("Usage: rustsync <source_directory> <destination_directory> <server_address> [--dry-run]");
         return;
     }
 
     println!(
-        "Source directory: {}\nBackup destination: {}",
-        args[1], args[2]
+        "Source directory: {}\nBackup destination: {}\nServer address: {}",
+        args[1], args[2], args[3]
     );
 
     let path = Path::new(&args[1]);
@@ -87,6 +87,9 @@ fn main() {
             return;
         }
     }
+
+    let server_address = &args[3];
+    let cleaned_server_address = server_address.trim_end_matches('/');
     // ------------- End Validate arguments -------------
 
     println!("RustSync");
@@ -111,12 +114,18 @@ fn main() {
     let changes = compare_scans(&current_scan, &previous_scan);
     print_changes(&changes);
 
-    check_server();
-
     if !dry_run_mode {
+        match check_server(server_address) {
+            Ok(()) => {
+                println!("Connection to server successful");
+            },
+            Err(err) => {
+                eprintln!("Error connecting to the server: {err}");
+            }
+        }
         match backup_files(&changes, path, destination) {
             Ok(()) => {
-                match upload_changes(&changes, &current_scan, path) {
+                match upload_changes(&changes, &current_scan, path, cleaned_server_address) {
                     Ok(()) => {},
                     Err(err) => {
                         eprintln!("Remote backup failed: {err}");
