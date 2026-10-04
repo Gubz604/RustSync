@@ -1,5 +1,7 @@
-use std::{fs, println};
+use std::println;
 use std::path::Path;
+use reqwest::blocking::Body;
+use std::fs::File;
 
 use crate::scanner::{FileEntry, FileChange, FileState};
 
@@ -36,21 +38,22 @@ pub fn send_file(file_entry: &FileEntry, source_path: &Path, server_address: &st
     let client = reqwest::blocking::Client::new();
     let upload_url: String = format!("{}/upload", server_address);
 
-    let bytes = fs::read(source_path.join(&file_entry.path));
+    let file_result = File::open(source_path.join(&file_entry.path));
 
     let path = file_entry.path.to_string_lossy().to_string();
     let size = file_entry.size.to_string();
     let hash = &file_entry.hash;
 
-    match bytes {
-        Ok(bytes) => {
+    match file_result {
+        Ok(file) => {
+            let body = Body::sized(file, file_entry.size);
             match client
                 .post(upload_url)
                 .header("X-File-Path", &path)
                 .header("X-File-Size", size)
                 .header("X-File-Hash", hash)
                 .header("Content-Type", "application/octet-stream")
-                .body(bytes)
+                .body(body)
                 .send()
             {
                 Ok(response) => {
@@ -77,7 +80,7 @@ pub fn send_file(file_entry: &FileEntry, source_path: &Path, server_address: &st
             }
         },
         Err(err) => {
-            Err(format!("Failed to read {}: {err}", path))
+            Err(format!("Failed to open {}: {err}", path))
         }
     }
 }
