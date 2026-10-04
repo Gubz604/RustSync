@@ -1,5 +1,6 @@
 /target
 
+.rustsync/
 rustsync_state.txt
 rustsync_state_local.txt
 rustsync_state_remote.txt

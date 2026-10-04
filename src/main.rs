@@ -9,15 +9,11 @@ mod network;
 
 use backup::backup_files;
 use scanner::{FileChange, FileEntry, FileState, compare_scans, walk_directory};
-use state::{load_scan, save_scan};
+use state::{load_scan, save_scan, create_job_id, create_state_paths};
 use network::{check_server, upload_changes};
 
-// This is temporary
 
 fn main() {
-    let local_state_path = Path::new("rustsync_state_local.txt");
-    let remote_state_path = Path::new("rustsync_state_remote.txt");
-
     // ------------- Collect and Validate arguments -------------
 
     let args: Vec<String> = env::args().collect();
@@ -91,19 +87,29 @@ fn main() {
         }
     }
 
+    let Ok(job_id) = create_job_id(path) else {
+        eprintln!("Failed to create job id");
+        return;
+    };
+
+    let Ok((local_state, remote_state)) = create_state_paths(&job_id) else {
+        eprintln!("Error creating state and local paths");
+        return;
+    };
+
     let server_address = &args[3];
     let cleaned_server_address = server_address.trim_end_matches('/');
     // ------------- End Validate arguments -------------
 
     println!("RustSync");
-    let local_previous_scan: Vec<FileEntry> = match load_scan(local_state_path) {
+    let local_previous_scan: Vec<FileEntry> = match load_scan(&local_state) {
         Ok(previous) => previous,
         Err(err) => {
             eprintln!("Error loading local previous scan: {err}");
             return;
         }
     };
-    let remote_previous_scan: Vec<FileEntry> = match load_scan(remote_state_path) {
+    let remote_previous_scan: Vec<FileEntry> = match load_scan(&remote_state) {
         Ok(previous) => previous,
         Err(err) => {
             eprintln!("Error loading remote previous scan: {err}");
@@ -129,7 +135,7 @@ fn main() {
     if !dry_run_mode {
         match backup_files(&local_changes, path, destination) {
             Ok(()) => {
-                match save_scan(&current_scan, local_state_path) {
+                match save_scan(&current_scan, &local_state) {
                     Ok(()) => {}
                     Err(err) => {
                         eprintln!("Local Save failed: {err}");
@@ -154,7 +160,7 @@ fn main() {
                     }
                 }
 
-                match save_scan(&current_scan, remote_state_path) {
+                match save_scan(&current_scan, &remote_state) {
                     Ok(()) => {}
                     Err(err) => {
                         eprintln!("Remote Save failed: {err}");

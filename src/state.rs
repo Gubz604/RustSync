@@ -2,6 +2,8 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
+use sha2::{Digest, Sha256};
+use std::fmt::Write as FmtWrite;
 
 use crate::scanner::FileEntry;
 
@@ -72,4 +74,33 @@ pub fn load_scan(state_path: &Path) -> Result<Vec<FileEntry>, std::io::Error> {
     }
 
     Ok(files)
+}
+
+pub fn create_job_id(source: &Path) -> Result<String, std::io::Error> {
+    let canonicalized_path = fs::canonicalize(source)?;
+
+    let mut hasher = Sha256::new();
+    hasher.update(canonicalized_path.to_string_lossy().as_bytes());
+    let result = hasher.finalize();
+    
+    let mut hash_string = String::new();
+
+    for byte in result {
+        let _ = write!(hash_string, "{:02x}", byte);
+    }
+
+    Ok(hash_string)
+}
+
+pub fn create_state_paths(job_id: &str) -> Result<(PathBuf, PathBuf), std::io::Error> {
+    let job_dir = PathBuf::from(".rustsync")
+        .join("state")
+        .join(job_id);
+
+    fs::create_dir_all(&job_dir)?;
+
+    let local_path = job_dir.join(PathBuf::from("local.txt"));
+    let remote_path = job_dir.join(PathBuf::from("remote.txt"));
+
+    Ok((local_path, remote_path))
 }
