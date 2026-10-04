@@ -1,7 +1,11 @@
 /target
 
 rustsync_state.txt
+rustsync_state_local.txt
+rustsync_state_remote.txt
 
 server/rustsync-server.exe
 
 server/Backups/
+
+hello

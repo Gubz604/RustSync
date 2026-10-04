@@ -47,6 +47,7 @@ pub fn send_file(file_entry: &FileEntry, source_path: &Path, server_address: &st
     match file_result {
         Ok(file) => {
             let body = Body::sized(file, file_entry.size);
+            // println!("Uploading {} with hash {}", path, hash);   // For debugging
             match client
                 .post(upload_url)
                 .header("X-File-Path", &path)

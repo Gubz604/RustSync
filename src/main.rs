@@ -12,8 +12,11 @@ use scanner::{FileChange, FileEntry, FileState, compare_scans, walk_directory};
 use state::{load_scan, save_scan};
 use network::{check_server, upload_changes};
 
+// This is temporary
+
 fn main() {
-    let state_path = Path::new("rustsync_state.txt");
+    let local_state_path = Path::new("rustsync_state_local.txt");
+    let remote_state_path = Path::new("rustsync_state_remote.txt");
 
     // ------------- Collect and Validate arguments -------------
 
@@ -93,16 +96,23 @@ fn main() {
     // ------------- End Validate arguments -------------
 
     println!("RustSync");
-    let previous_scan: Vec<FileEntry> = match load_scan(state_path) {
+    let local_previous_scan: Vec<FileEntry> = match load_scan(local_state_path) {
         Ok(previous) => previous,
         Err(err) => {
-            eprintln!("Error loading previous scan: {err}");
+            eprintln!("Error loading local previous scan: {err}");
+            return;
+        }
+    };
+    let remote_previous_scan: Vec<FileEntry> = match load_scan(remote_state_path) {
+        Ok(previous) => previous,
+        Err(err) => {
+            eprintln!("Error loading remote previous scan: {err}");
             return;
         }
     };
 
     let mut current_scan: Vec<FileEntry> = Vec::new();
-    match walk_directory(path, path, &previous_scan, &mut current_scan) {
+    match walk_directory(path, path, &local_previous_scan, &mut current_scan) {
         Ok(()) => {}
         Err(err) => {
             eprintln!("Scan failed: {err}");
@@ -111,32 +121,18 @@ fn main() {
     }
     println!("{} files were discovered\n\n", current_scan.len());
 
-    let changes = compare_scans(&current_scan, &previous_scan);
-    print_changes(&changes);
+    let local_changes = compare_scans(&current_scan, &local_previous_scan);
+    let remote_changes = compare_scans(&current_scan, &remote_previous_scan);
+    
+    print_changes(&local_changes);
 
     if !dry_run_mode {
-        match check_server(server_address) {
+        match backup_files(&local_changes, path, destination) {
             Ok(()) => {
-                println!("Connection to server successful");
-            },
-            Err(err) => {
-                eprintln!("Error connecting to the server: {err}");
-            }
-        }
-        match backup_files(&changes, path, destination) {
-            Ok(()) => {
-                match upload_changes(&changes, &current_scan, path, cleaned_server_address) {
-                    Ok(()) => {},
-                    Err(err) => {
-                        eprintln!("Remote backup failed: {err}");
-                        return;
-                    }
-                }
-
-                match save_scan(&current_scan, state_path) {
+                match save_scan(&current_scan, local_state_path) {
                     Ok(()) => {}
                     Err(err) => {
-                        eprintln!("Save failed: {err}");
+                        eprintln!("Local Save failed: {err}");
                         return;
                     }
                 }
@@ -144,6 +140,30 @@ fn main() {
             Err(err) => {
                 eprintln!("Backup failed: {err}");
                 return;
+            }
+        }
+        match check_server(cleaned_server_address) {
+            Ok(()) => {
+                println!("Connection to server successful");
+
+                match upload_changes(&remote_changes, &current_scan, path, cleaned_server_address) {
+                    Ok(()) => {},
+                    Err(err) => {
+                        eprintln!("Remote backup failed: {err}");
+                        return;
+                    }
+                }
+
+                match save_scan(&current_scan, remote_state_path) {
+                    Ok(()) => {}
+                    Err(err) => {
+                        eprintln!("Remote Save failed: {err}");
+                        return;
+                    }
+                }
+            },
+            Err(err) => {
+                eprintln!("Error connecting to the server: {err}");
             }
         }
     } else {
