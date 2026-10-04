@@ -62,26 +62,6 @@ func makeUploadHandler(backupRoot string) http.HandlerFunc {
 			return
 		}
 
-		data, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w,"Error reading bytes from upload", http.StatusInternalServerError)
-			fmt.Println("Error reading bytes from upload")
-			return
-		}
-
-		if parsedSize != uint64(len(data)) {
-			http.Error(w, "File size does not match size in header", http.StatusBadRequest)
-			fmt.Println("File size does not match size in header")
-			return
-		}
-
-		hashString := fmt.Sprintf("%x", sha256.Sum256(data))
-		if hashString != hash {
-			http.Error(w, "Hash from metadata does not match file hash", http.StatusBadRequest)
-			fmt.Println("Hash from metadata does not match file hash")
-			return
-		}
-
 		destination := filepath.Join(backupRoot, cleanedPath)
 
 		absoluteRoot, absRootErr := filepath.Abs(backupRoot)
@@ -117,14 +97,57 @@ func makeUploadHandler(backupRoot string) http.HandlerFunc {
 			return
 		}
 
-		writeFileErr := os.WriteFile(destination, data, 0644)
-		if writeFileErr != nil {
-			http.Error(w, "File failed to be written", http.StatusInternalServerError)
-			fmt.Println("File failed to be written")
+		tempFile, tempErr := os.CreateTemp(parent, ".rustsync-upload-*")
+		if tempErr != nil {
+			http.Error(w, "Error creating temporary file", http.StatusInternalServerError)
+			fmt.Println("Error creating temporary file")
+			return
+		}
+		hasher := sha256.New()
+
+		defer func() {
+			tempFile.Close()
+			os.Remove(tempFile.Name())
+		}()
+
+		writer := io.MultiWriter(tempFile, hasher)
+
+		written, writeErr := io.Copy(writer, r.Body)
+		if writeErr != nil {
+			http.Error(w, "Error writing temporary file", http.StatusInternalServerError)
+			fmt.Println("Error writing temporary file")
 			return
 		}
 
-		fmt.Printf("Received %d bytes\n", len(data))
+		if parsedSize != uint64(written) {
+			http.Error(w, "File size does not match size in header", http.StatusBadRequest)
+			fmt.Println("File size does not match size in header")
+			return
+		}
+
+		hashString := fmt.Sprintf("%x", hasher.Sum(nil))
+		if hashString != hash {
+			http.Error(w, "Hash from metadata does not match file hash", http.StatusBadRequest)
+			fmt.Println("Hash from metadata does not match file hash")
+			return
+		}
+
+		closeErr := tempFile.Close()
+		if closeErr != nil {
+			http.Error(w, "Error in closing temporary file", http.StatusInternalServerError)
+			fmt.Println("Error in closing temporary file")
+			return
+		}
+
+		renameErr := os.Rename(tempFile.Name(), destination)
+		if renameErr != nil {
+			http.Error(w, "Error in renaming temporary file", http.StatusInternalServerError)
+			fmt.Println("Error in renaming temporary file")
+			return
+		}
+
+
+		fmt.Printf("Received %d bytes\n", written)
 		fmt.Printf("File Path: %s\n", cleanedPath)
 		fmt.Printf("File Size: %s bytes\n", r.Header.Get("X-File-Size"))
 		fmt.Printf("File Hash: %s\n", r.Header.Get("X-File-Hash"))
