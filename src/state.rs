@@ -8,7 +8,8 @@ use std::fmt::Write as FmtWrite;
 use crate::scanner::FileEntry;
 
 pub fn save_scan(files: &[FileEntry], state_path: &Path) -> Result<(), std::io::Error> {
-    let mut file = File::create(state_path)?;
+    let temp = state_path.with_extension("tmp");
+    let mut temp_file = File::create(&temp)?;
 
     for entry in files {
         match entry.modified.duration_since(UNIX_EPOCH) {
@@ -17,7 +18,7 @@ pub fn save_scan(files: &[FileEntry], state_path: &Path) -> Result<(), std::io::
                 let nanoseconds = duration.subsec_nanos();
 
                 writeln!(
-                    file,
+                    temp_file,
                     "{}|{}|{}|{}|{}",
                     entry.path.display(),
                     entry.size,
@@ -27,10 +28,16 @@ pub fn save_scan(files: &[FileEntry], state_path: &Path) -> Result<(), std::io::
                 )?;
             }
             Err(err) => {
-                eprintln!("Timestamp error: {err}");
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid file timestamp: {err}"),
+                ));
             }
         }
     }
+
+    drop(temp_file);
+    fs::rename(&temp, state_path)?;
 
     Ok(())
 }
@@ -125,4 +132,40 @@ pub fn create_state_paths(job_id: &str, local_destination_id: &str, remote_desti
     let remote_path = remote_dir.join(remote_filename);
 
     Ok((local_path, remote_path))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::assert_eq;
+    use std::path::PathBuf;
+
+    #[test]
+    fn failed_save_preserves_existing_state() {
+
+        let test_dir = std::env::temp_dir().join("rustsync_save_test");
+        let state_path = test_dir.join("state.txt");
+        if test_dir.exists() {
+            fs::remove_dir_all(&test_dir).unwrap();
+        }
+
+        fs::create_dir_all(&test_dir).unwrap();
+
+        fs::write(&state_path, b"ORIGINAL STATE").unwrap();
+
+        let file_entry_vector: Vec<FileEntry> = vec![
+            FileEntry::new(PathBuf::from("test.txt"), 14, UNIX_EPOCH - Duration::from_secs(1), String::from("this_is_a_hash"))
+        ];
+
+        let result = save_scan(&file_entry_vector, &state_path);
+
+        assert!(result.is_err());
+
+        let contents = fs::read(&state_path).unwrap();
+
+        assert_eq!(contents, b"ORIGINAL STATE");
+
+        fs::remove_dir_all(&test_dir).unwrap();
+    }
 }

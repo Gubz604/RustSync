@@ -65,7 +65,7 @@ mod tests {
     use super::*;
 
     use std::assert_eq;
-use std::time::SystemTime;
+    use std::time::SystemTime;
     use std::path::PathBuf;
     use crate::scanner::FileState;
 
