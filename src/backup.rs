@@ -64,12 +64,13 @@ pub fn backup_files(
 mod tests {
     use super::*;
 
-    use std::time::SystemTime;
+    use std::assert_eq;
+use std::time::SystemTime;
     use std::path::PathBuf;
     use crate::scanner::FileState;
 
     #[test]
-    fn backup_rejects_hash_mismatch() {
+    fn test_backup_rejects_hash_mismatch() {
 
         let file_entry_vector: Vec<FileEntry> = vec![
             FileEntry::new(PathBuf::from("test.txt"), 5, SystemTime::now(), String::from("this_is_a_hash"))
@@ -104,6 +105,50 @@ mod tests {
             error.kind(),
             std::io::ErrorKind::InvalidData
         );
+
+        fs::remove_dir_all(&test_dir).unwrap();
+    }
+
+    #[test]
+    fn backup_copies_and_verifies_file() {
+        let source_path = PathBuf::from("test.txt");
+
+        let test_dir = std::env::temp_dir().join("rustsync_backup_success_test");
+        let source = test_dir.join("source/test");
+        let backup = test_dir.join("backup/test");
+
+        if test_dir.exists() {
+            fs::remove_dir_all(&test_dir).unwrap();
+        }
+
+        let backup_file = backup.join("test.txt");
+        let source_file = source.join("test.txt");
+
+        fs::create_dir_all(&source).unwrap();
+        fs::write(&source_file, b"hello").unwrap();
+
+        let hash = hash_file(&source_file).unwrap();
+
+        let file_entry_vector: Vec<FileEntry> = vec![
+            FileEntry::new(source_path, 5, SystemTime::now(), hash)
+        ];
+        let file_change_vector: Vec<FileChange> = vec![
+            FileChange { path: file_entry_vector[0].path.to_path_buf() , state: FileState::Modified }
+        ];
+
+        let result = backup_files(
+            &file_change_vector,
+            &file_entry_vector,
+            &source,
+            &backup,
+        );
+
+        assert!(result.is_ok());
+
+        assert!(backup_file.exists());
+
+        let contents = fs::read(&backup_file).unwrap();
+        assert_eq!(contents, b"hello");
 
         fs::remove_dir_all(&test_dir).unwrap();
     }
