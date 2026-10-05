@@ -6,6 +6,7 @@ mod backup;
 mod scanner;
 mod state;
 mod network;
+mod hashing;
 
 use backup::backup_files;
 use scanner::{FileChange, FileEntry, FileState, compare_scans, walk_directory};
@@ -141,7 +142,7 @@ fn main() {
     print_changes(&local_changes);
 
     if !dry_run_mode {
-        match backup_files(&local_changes, path, destination) {
+        match backup_files(&local_changes, &current_scan, path, destination) {
             Ok(()) => {
                 match save_scan(&current_scan, &local_state) {
                     Ok(()) => {}
