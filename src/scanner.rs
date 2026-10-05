@@ -19,6 +19,7 @@ pub enum FileState {
     Deleted,
 }
 
+#[derive(Debug)]
 pub struct FileEntry {
     pub path: PathBuf,
     pub size: u64,

@@ -54,26 +54,51 @@ pub fn load_scan(state_path: &Path) -> Result<Vec<FileEntry>, std::io::Error> {
     for line in contents.lines() {
         let parts: Vec<&str> = line.split('|').collect();
         if parts.len() != 5 {
-            continue;
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid state found during loading scan for line: {}", line)
+            ));
         }
 
         let path: PathBuf = PathBuf::from(parts[0]);
         let hash: String = parts[4].to_string();
 
-        let Ok(size) = parts[1].parse::<u64>() else {
-            eprintln!("Error retrieving file size during loading: {line}");
-            continue;
+        let size = match parts[1].parse::<u64>() {
+            Ok(value) => value,
+            Err(err) => {
+                return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid size in state file: {err}"),
+                ));
+            }
         };
 
-        let Ok(timestamp_sec) = parts[2].parse::<u64>() else {
-            eprintln!("Error getting file modification seconds during loading: {line}");
-            continue;
+        let timestamp_sec = match parts[2].parse::<u64>() {
+            Ok(value) => value,
+            Err(err) => {
+                return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid timestamp for seconds: {err}"),
+                ));
+            }
         };
 
-        let Ok(timestamp_nano) = parts[3].parse::<u32>() else {
-            eprintln!("Error getting file modification nanoseconds during loading: {line}");
-            continue;
+        let timestamp_nano = match parts[3].parse::<u32>() {
+            Ok(value) => value,
+            Err(err) => {
+                return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid timstamp for nanoseconds: {err}"),
+                ));
+            }
         };
+
+        if timestamp_nano > 999_999_999 {
+            return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Error retrieving nanoseconds: Greater than 999,999,999"),
+            ));
+        }
 
         let system_timestamp = UNIX_EPOCH + Duration::new(timestamp_sec, timestamp_nano);
 
@@ -165,6 +190,58 @@ mod tests {
         let contents = fs::read(&state_path).unwrap();
 
         assert_eq!(contents, b"ORIGINAL STATE");
+
+        fs::remove_dir_all(&test_dir).unwrap();
+    }
+
+    #[test]
+    fn load_scan_rejects_corrupted_state() {
+        let test_dir = std::env::temp_dir().join("rustsync_load_corrupt_test");
+        let state_path = test_dir.join("state.txt");
+        if test_dir.exists() {
+            fs::remove_dir_all(&test_dir).unwrap();
+        }
+
+        fs::create_dir_all(&test_dir).unwrap();
+
+        fs::write(&state_path, b"test.txt|NOT_A_NUMBER|123|456|abc123").unwrap();
+
+        let result = load_scan(&state_path);
+
+        assert!(result.is_err());
+
+        let error = result.unwrap_err();
+
+        assert_eq!(
+            error.kind(),
+            std::io::ErrorKind::InvalidData
+        );
+
+        fs::remove_dir_all(&test_dir).unwrap();
+    }
+
+    #[test]
+    fn load_scan_rejects_invalid_field_count() {
+        let test_dir = std::env::temp_dir().join("rustsync_load_invalid_field_test");
+        let state_path = test_dir.join("state.txt");
+        if test_dir.exists() {
+            fs::remove_dir_all(&test_dir).unwrap();
+        }
+
+        fs::create_dir_all(&test_dir).unwrap();
+
+        fs::write(&state_path, b"test.txt|5|123").unwrap();
+
+        let result = load_scan(&state_path);
+
+        assert!(result.is_err());
+
+        let error = result.unwrap_err();
+
+        assert_eq!(
+            error.kind(),
+            std::io::ErrorKind::InvalidData
+        );
 
         fs::remove_dir_all(&test_dir).unwrap();
     }
