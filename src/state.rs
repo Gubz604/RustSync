@@ -76,11 +76,10 @@ pub fn load_scan(state_path: &Path) -> Result<Vec<FileEntry>, std::io::Error> {
     Ok(files)
 }
 
-pub fn create_job_id(source: &Path) -> Result<String, std::io::Error> {
-    let canonicalized_path = fs::canonicalize(source)?;
 
+fn create_id(value: &str) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(canonicalized_path.to_string_lossy().as_bytes());
+    hasher.update(value);
     let result = hasher.finalize();
     
     let mut hash_string = String::new();
@@ -89,18 +88,41 @@ pub fn create_job_id(source: &Path) -> Result<String, std::io::Error> {
         let _ = write!(hash_string, "{:02x}", byte);
     }
 
-    Ok(hash_string)
+    hash_string
 }
 
-pub fn create_state_paths(job_id: &str) -> Result<(PathBuf, PathBuf), std::io::Error> {
+pub fn create_local_destination_id(destination: &Path) -> Result<String, std::io::Error> {
+    let canonicalized_destination = fs::canonicalize(destination)?;
+
+    Ok(create_id(&canonicalized_destination.to_string_lossy()))
+}
+
+pub fn create_remote_destination_id(server_address: &str) -> String {
+    create_id(server_address)
+}
+
+pub fn create_job_id(source: &Path) -> Result<String, std::io::Error> {
+    let canonicalized_path = fs::canonicalize(source)?;
+
+    Ok(create_id(&canonicalized_path.to_string_lossy()))
+}
+
+pub fn create_state_paths(job_id: &str, local_destination_id: &str, remote_destination_id: &str) -> Result<(PathBuf, PathBuf), std::io::Error> {
     let job_dir = PathBuf::from(".rustsync")
         .join("state")
         .join(job_id);
 
-    fs::create_dir_all(&job_dir)?;
+    let local_dir = job_dir.join("local");
+    let remote_dir = job_dir.join("remote");
 
-    let local_path = job_dir.join(PathBuf::from("local.txt"));
-    let remote_path = job_dir.join(PathBuf::from("remote.txt"));
+    fs::create_dir_all(&local_dir)?;
+    fs::create_dir_all(&remote_dir)?;
+
+    let local_filename = format!("{}.txt", local_destination_id);
+    let remote_filename = format!("{}.txt", remote_destination_id);
+
+    let local_path = local_dir.join(local_filename);
+    let remote_path = remote_dir.join(remote_filename);
 
     Ok((local_path, remote_path))
 }

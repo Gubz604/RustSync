@@ -9,7 +9,7 @@ mod network;
 
 use backup::backup_files;
 use scanner::{FileChange, FileEntry, FileState, compare_scans, walk_directory};
-use state::{load_scan, save_scan, create_job_id, create_state_paths};
+use state::{load_scan, save_scan, create_job_id, create_state_paths, create_local_destination_id, create_remote_destination_id};
 use network::{check_server, upload_changes};
 
 
@@ -87,18 +87,26 @@ fn main() {
         }
     }
 
+    let server_address = &args[3];
+    let cleaned_server_address = server_address.trim_end_matches('/');
+
     let Ok(job_id) = create_job_id(path) else {
         eprintln!("Failed to create job id");
         return;
     };
 
-    let Ok((local_state, remote_state)) = create_state_paths(&job_id) else {
+    let Ok(local_destination_id) = create_local_destination_id(destination) else {
+        eprintln!("Failed to create a local destination id");
+        return;
+    };
+
+    let remote_destination_id = create_remote_destination_id(cleaned_server_address);
+
+    let Ok((local_state, remote_state)) = create_state_paths(&job_id, &local_destination_id, &remote_destination_id) else {
         eprintln!("Error creating state and local paths");
         return;
     };
 
-    let server_address = &args[3];
-    let cleaned_server_address = server_address.trim_end_matches('/');
     // ------------- End Validate arguments -------------
 
     println!("RustSync");
