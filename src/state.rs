@@ -1,40 +1,82 @@
 use std::fs::{self, File};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt::Write as FmtWrite;
 
 use crate::scanner::FileEntry;
 
-pub fn save_scan(files: &[FileEntry], state_path: &Path) -> Result<(), std::io::Error> {
-    let temp = state_path.with_extension("tmp");
-    let mut temp_file = File::create(&temp)?;
+#[derive(Serialize, Deserialize)]
+struct StoredFileEntry {
+    path: PathBuf,
+    size: u64,
+    modified_seconds: u64,
+    modified_nanoseconds: u32,
+    hash: String,
+}
 
-    for entry in files {
-        match entry.modified.duration_since(UNIX_EPOCH) {
+impl StoredFileEntry {
+    fn from_file_entry(entry: &FileEntry) -> Result<Self, std::io::Error> {
+
+        let duration = match entry.modified.duration_since(UNIX_EPOCH) {
             Ok(duration) => {
                 let seconds = duration.as_secs();
                 let nanoseconds = duration.subsec_nanos();
-
-                writeln!(
-                    temp_file,
-                    "{}|{}|{}|{}|{}",
-                    entry.path.display(),
-                    entry.size,
-                    seconds,
-                    nanoseconds,
-                    entry.hash
-                )?;
+                (seconds, nanoseconds)
             }
             Err(err) => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    format!("Invalid file timestamp: {err}"),
+                    format!("Invalid timestamp: {err}")
                 ));
             }
-        }
+        };
+
+        Ok(StoredFileEntry {
+            path: entry.path.clone(),
+            size: entry.size,
+            modified_seconds: duration.0,
+            modified_nanoseconds: duration.1,
+            hash: entry.hash.clone()
+        })
     }
+
+    fn into_file_entry(self) -> Result<FileEntry, std::io::Error> {
+        if self.modified_nanoseconds > 999_999_999 {
+            return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "Invalid timestamp: nanoseconds greater than 999,999,999",
+            ));
+        }
+
+        let system_timestamp = UNIX_EPOCH + Duration::new(self.modified_seconds, self.modified_nanoseconds);
+
+        Ok(FileEntry::new(
+            self.path,
+            self.size,
+            system_timestamp,
+            self.hash
+        ))
+    }
+}
+
+pub fn save_scan(files: &[FileEntry], state_path: &Path) -> Result<(), std::io::Error> {
+    let temp = state_path.with_extension("tmp");
+    let temp_file = File::create(&temp)?;
+
+    let mut stored_files: Vec<StoredFileEntry> = Vec::new();
+
+    for entry in files {
+        stored_files.push(StoredFileEntry::from_file_entry(entry)?);
+    }
+
+    serde_json::to_writer_pretty(&temp_file, &stored_files).map_err(|err| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Failed to create JSON when saving file: {err}")
+        )
+    })?;
 
     drop(temp_file);
     fs::rename(&temp, state_path)?;
@@ -51,58 +93,18 @@ pub fn load_scan(state_path: &Path) -> Result<Vec<FileEntry>, std::io::Error> {
 
     let contents = fs::read_to_string(state_path)?;
 
-    for line in contents.lines() {
-        let parts: Vec<&str> = line.split('|').collect();
-        if parts.len() != 5 {
+    let stored_files: Vec<StoredFileEntry> = match serde_json::from_str(&contents) {
+        Ok(stored_files) => stored_files,
+        Err(err) => {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Invalid state found during loading scan for line: {}", line)
+                format!("Failed to read JSON from file when loading scan: {err}")
             ));
         }
+    };
 
-        let path: PathBuf = PathBuf::from(parts[0]);
-        let hash: String = parts[4].to_string();
-
-        let size = match parts[1].parse::<u64>() {
-            Ok(value) => value,
-            Err(err) => {
-                return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid size in state file: {err}"),
-                ));
-            }
-        };
-
-        let timestamp_sec = match parts[2].parse::<u64>() {
-            Ok(value) => value,
-            Err(err) => {
-                return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid timestamp for seconds: {err}"),
-                ));
-            }
-        };
-
-        let timestamp_nano = match parts[3].parse::<u32>() {
-            Ok(value) => value,
-            Err(err) => {
-                return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid timstamp for nanoseconds: {err}"),
-                ));
-            }
-        };
-
-        if timestamp_nano > 999_999_999 {
-            return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("Error retrieving nanoseconds: Greater than 999,999,999"),
-            ));
-        }
-
-        let system_timestamp = UNIX_EPOCH + Duration::new(timestamp_sec, timestamp_nano);
-
-        files.push(FileEntry::new(path, size, system_timestamp, hash));
+    for file in stored_files {
+        files.push(file.into_file_entry()?);
     }
 
     Ok(files)
@@ -204,7 +206,18 @@ mod tests {
 
         fs::create_dir_all(&test_dir).unwrap();
 
-        fs::write(&state_path, b"test.txt|NOT_A_NUMBER|123|456|abc123").unwrap();
+        fs::write(
+            &state_path,
+        "[
+                    {
+                        \"path\": \"test.txt\",
+                        \"size\": \"NOT_A_NUMBER\",
+                        \"modified_seconds\": 123,
+                        \"modified_nanoseconds\": 456,
+                        \"hash\": \"abc123\"
+                    }
+                ]"
+        ).unwrap();
 
         let result = load_scan(&state_path);
 
@@ -221,8 +234,8 @@ mod tests {
     }
 
     #[test]
-    fn load_scan_rejects_invalid_field_count() {
-        let test_dir = std::env::temp_dir().join("rustsync_load_invalid_field_test");
+    fn load_scan_rejects_invalid_nanoseconds() {
+        let test_dir = std::env::temp_dir().join("rustsync_load_invalid_nanoseconds_test");
         let state_path = test_dir.join("state.txt");
         if test_dir.exists() {
             fs::remove_dir_all(&test_dir).unwrap();
@@ -230,7 +243,18 @@ mod tests {
 
         fs::create_dir_all(&test_dir).unwrap();
 
-        fs::write(&state_path, b"test.txt|5|123").unwrap();
+        fs::write(
+            &state_path,
+        "[
+                    {
+                        \"path\": \"test.txt\",
+                        \"size\": 10,
+                        \"modified_seconds\": 123,
+                        \"modified_nanoseconds\": 1000000000,
+                        \"hash\": \"abc123\"
+                    }
+                ]"
+        ).unwrap();
 
         let result = load_scan(&state_path);
 
@@ -243,6 +267,36 @@ mod tests {
             std::io::ErrorKind::InvalidData
         );
 
+        fs::remove_dir_all(&test_dir).unwrap();
+    }
+
+    #[test]
+    fn save_and_load_scan_round_trip() {
+        let test_dir = std::env::temp_dir().join("rustsync_state_round_trip_test");
+        let state_path = test_dir.join("state.json");
+        if test_dir.exists() {
+            fs::remove_dir_all(&test_dir).unwrap();
+        }
+
+        fs::create_dir_all(&test_dir).unwrap();
+
+        let files = vec![FileEntry::new(
+            PathBuf::from("folder|name/test.txt"),
+            10,
+            UNIX_EPOCH + Duration::new(123, 456),
+            String::from("this_is_a_hash_1"),
+        )];
+
+        save_scan(&files, &state_path).unwrap();
+        let loaded = load_scan(&state_path).unwrap();
+
+        assert_eq!(loaded.len(), 1);
+
+        assert_eq!(loaded[0].path, files[0].path);
+        assert_eq!(loaded[0].size, files[0].size);
+        assert_eq!(loaded[0].modified, files[0].modified);
+        assert_eq!(loaded[0].hash, files[0].hash);
+        
         fs::remove_dir_all(&test_dir).unwrap();
     }
 }
