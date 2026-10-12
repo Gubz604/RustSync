@@ -18,15 +18,24 @@ fn main() {
     // ------------- Collect and Validate arguments -------------
 
     let args: Vec<String> = env::args().collect();
-    let dry_run_mode;
+    let flags;
+    let dry_run_mode: bool;
+    let verify: bool;
 
-    if args.len() == 4 {
-        dry_run_mode = false;
-    } else if args.len() == 5 && args[4] == "--dry-run" {
-        dry_run_mode = true;
-    } else {
-        eprintln!("Usage: rustsync <source_directory> <destination_directory> <server_address> [--dry-run]");
+    if args.len() < 4 {
+        eprintln!("Usage: rustsync <source_directory> <destination_directory> <server_address> [--dry-run] [--verify]");
         return;
+    } else {
+        flags = &args[4..];
+        dry_run_mode = flags.iter().any(|arg| arg == "--dry-run");
+        verify = flags.iter().any(|arg| arg == "--verify");
+
+        for flag in flags {
+            if flag != "--dry-run" && flag != "--verify" {
+                println!("Unknown option: {flag}");
+                return;
+            }
+        }
     }
 
     println!(
@@ -127,7 +136,7 @@ fn main() {
     };
 
     let mut current_scan: Vec<FileEntry> = Vec::new();
-    match walk_directory(path, path, &local_previous_scan, &mut current_scan) {
+    match walk_directory(path, path, &local_previous_scan, &mut current_scan, verify) {
         Ok(()) => {}
         Err(err) => {
             eprintln!("Scan failed: {err}");

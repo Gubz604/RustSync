@@ -53,6 +53,7 @@ pub fn walk_directory(
     source_root: &Path,
     previous_files: &[FileEntry],
     output: &mut Vec<FileEntry>,
+    verify: bool,
 ) -> Result<(), std::io::Error> {
     let content = fs::read_dir(current_path)?;
 
@@ -76,21 +77,24 @@ pub fn walk_directory(
                         .find(|file| (**file).path == relative_path)
                     {
                         Some(previous_file) => {
-                            if previous_file.size == meta_size
-                                && previous_file.modified == meta_modified
-                            {
+                            let metadata_matches =
+                                previous_file.size == meta_size
+                                    && previous_file.modified == meta_modified;
+
+                            let should_hash = verify || !metadata_matches;
+                            if should_hash {
                                 output.push(FileEntry::new(
                                     relative_path.to_path_buf(),
                                     meta_size,
                                     meta_modified,
-                                    previous_file.hash.clone(),
+                                    hash_file(&entry_path)?,
                                 ));
                             } else {
                                 output.push(FileEntry::new(
                                     relative_path.to_path_buf(),
                                     meta_size,
                                     meta_modified,
-                                    hash_file(&entry_path)?,
+                                    previous_file.hash.clone(),
                                 ));
                             }
                         }
@@ -109,7 +113,7 @@ pub fn walk_directory(
                 }
             }
         } else if file_type.is_dir() {
-            walk_directory(&entry_path, source_root, previous_files, output)?;
+            walk_directory(&entry_path, source_root, previous_files, output, verify)?;
         } else {
             println!("{} is not supported", entry_path.display());
             continue;
@@ -175,5 +179,74 @@ fn should_ignore(path: &Path) -> bool {
             return ignore_list.contains(&filename.as_ref());
         }
         None => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+use std::fs;
+    use std::path::PathBuf;
+    use crate::hashing::hash_file;
+
+    use crate::scanner::{FileEntry, walk_directory};
+
+    #[test]
+    fn test_walk_directory_to_hash_with_correct_size_and_modified() {
+
+        let test_dir = std::env::temp_dir().join("walk_directory_correct_hash_and_size");
+        let file_path = test_dir.join("test.txt");
+        if test_dir.exists() {
+            fs::remove_dir_all(&test_dir).unwrap();
+        }
+
+        fs::create_dir_all(&test_dir).unwrap();
+
+        fs::write(&file_path, b"hello").unwrap();
+
+        let metadata = fs::metadata(&file_path).unwrap();
+
+        let previous_files: Vec<FileEntry> = vec![
+            FileEntry::new(PathBuf::from("test.txt"), metadata.len(), metadata.modified().unwrap(), String::from("wrong_hash"))
+        ];
+
+        let mut output: Vec<FileEntry> = Vec::new();
+
+        walk_directory(&test_dir, &test_dir, &previous_files, &mut output, true).unwrap();
+
+        assert_eq!(output.len(), 1);
+
+        assert_ne!(output[0].hash, "wrong_hash");
+        assert_eq!(output[0].hash, hash_file(&file_path).unwrap());
+
+        fs::remove_dir_all(&test_dir).unwrap();
+    }
+
+    #[test]
+    fn walk_directory_reuses_hash_when_verify_disabled() {
+        let test_dir = std::env::temp_dir().join("walk_directory_false");
+        let file_path = test_dir.join("test.txt");
+        if test_dir.exists() {
+            fs::remove_dir_all(&test_dir).unwrap();
+        }
+
+        fs::create_dir_all(&test_dir).unwrap();
+
+        fs::write(&file_path, b"hello").unwrap();
+
+        let metadata = fs::metadata(&file_path).unwrap();
+
+        let previous_files: Vec<FileEntry> = vec![
+            FileEntry::new(PathBuf::from("test.txt"), metadata.len(), metadata.modified().unwrap(), String::from("wrong_hash"))
+        ];
+
+        let mut output: Vec<FileEntry> = Vec::new();
+
+        walk_directory(&test_dir, &test_dir, &previous_files, &mut output, false).unwrap();
+
+        assert_eq!(output.len(), 1);
+
+        assert_eq!(output[0].hash, "wrong_hash");
+
+        fs::remove_dir_all(&test_dir).unwrap();
     }
 }
