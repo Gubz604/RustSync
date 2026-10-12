@@ -1,5 +1,7 @@
 use std::fs;
 use std::path::Path;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use crate::scanner::{FileChange, FileEntry, FileState};
 use crate::hashing::hash_file;
@@ -58,6 +60,23 @@ pub fn backup_files(
         }
     }
     Ok(())
+}
+
+pub fn generate_snapshot_id() -> Result<String, std::io::Error> {
+    let duration = SystemTime::now().duration_since(UNIX_EPOCH);
+    match duration {
+        Ok(time) => {
+            let nanoseconds = time.as_nanos();
+
+            Ok(format!("snapshot-{}", nanoseconds))
+        },
+        Err(err) => {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Failure to generate snapshot id: {err}")
+            ))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -151,5 +170,17 @@ mod tests {
         assert_eq!(contents, b"hello");
 
         fs::remove_dir_all(&test_dir).unwrap();
+    }
+
+    #[test]
+    fn generate_snapshot_id_returns_valid_id() {
+        let snapshot = generate_snapshot_id().unwrap();
+
+        let timestamp = snapshot.strip_prefix("snapshot-").unwrap();
+
+        let parsed = timestamp.parse::<u128>();
+
+        assert!(parsed.is_ok());
+        assert!(parsed.unwrap() > 0);
     }
 }
