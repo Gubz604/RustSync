@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -62,7 +62,7 @@ pub fn backup_files(
     Ok(())
 }
 
-pub fn generate_snapshot_id() -> Result<String, std::io::Error> {
+fn generate_snapshot_id() -> Result<String, std::io::Error> {
     let duration = SystemTime::now().duration_since(UNIX_EPOCH);
     match duration {
         Ok(time) => {
@@ -77,6 +77,15 @@ pub fn generate_snapshot_id() -> Result<String, std::io::Error> {
             ))
         }
     }
+}
+
+pub fn create_snapshot_directory(backup_root: &Path) -> Result<PathBuf, std::io::Error> {
+    let snapshots = backup_root.join("snapshots");
+    fs::create_dir_all(&snapshots)?;
+    let snapshot_path = snapshots.join(generate_snapshot_id()?);
+    fs::create_dir(&snapshot_path)?;
+
+    Ok(snapshot_path)
 }
 
 #[cfg(test)]
@@ -182,5 +191,26 @@ mod tests {
 
         assert!(parsed.is_ok());
         assert!(parsed.unwrap() > 0);
+    }
+
+    #[test]
+    fn create_snapshot_directory_creates_directory() {
+        let test_dir = std::env::temp_dir().join("rustsync_snapshot_directory_test");
+        if test_dir.exists() {
+            fs::remove_dir_all(&test_dir).unwrap();
+        }
+        let expected_parent = test_dir.join("snapshots");
+        let snapshot_path = create_snapshot_directory(&test_dir).unwrap();
+
+        let name = snapshot_path.file_name().unwrap().to_str().unwrap();
+
+        assert!(name.starts_with("snapshot-"));
+
+        assert!(snapshot_path.exists());
+        assert!(snapshot_path.is_dir());
+        assert_eq!(snapshot_path.parent().unwrap(), expected_parent);
+
+
+        fs::remove_dir_all(&test_dir).unwrap();
     }
 }
